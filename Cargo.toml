@@ -1,0 +1,9 @@
+[package]
+name = "watcher"
+version = "0.1.0"
+authors = ["Holger Rapp <HolgerRapp@gmx.net>"]
+
+[dependencies]
+term = "0.2"
+notify = "^2.0"
+time = "0.1"

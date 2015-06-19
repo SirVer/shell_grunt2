@@ -11,4 +11,5 @@ libc = "*"
 
 [dependencies.lua]
 git = "https://github.com/jcmoyer/rust-lua53"
-
+# git = "https://github.com/SirVer/rust-lua53.git"
+# branch = "pkgconfig"

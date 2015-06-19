@@ -1,5 +1,6 @@
-extern crate lua;
 extern crate libc;
+extern crate lua;
+extern crate time;
 
 use self::lua::ffi::lua_State;
 use std::path;
@@ -12,7 +13,8 @@ struct LuaTask {
     key: i64,
 }
 
-// NOCOM(#sirver): rethink that.
+// TODO(sirver): That is actually a lie I think. I do not know if it is valid to use the same lua
+// state in multiple threads - even if mutex protected.
 unsafe impl Sync for LuaTask {}
 
 impl LuaTask {
@@ -23,35 +25,51 @@ impl LuaTask {
         }
     }
 
-    fn get_string(&self, key: &str) -> String {
+    fn push_value(&self, key: &str, state: &mut lua::State) {
         // S: D
-        let mut state = self.state.lock().unwrap();
         state.push_integer(self.key); // S: D key
         state.get_table(1); // S: D d
         state.push_string(key); // S: D d <key>
         state.get_table(-2); // S: D d <value>
-        let s = state.check_string(-1);
-        state.pop(2);
-        s
     }
 
+    fn get_string(&self, key: &str) -> Option<String> {
+        let mut state = self.state.lock().unwrap();
+        self.push_value(key, &mut state); // S: D d <value>
+        let rv = if state.is_string(-1) {
+            Some(state.check_string(-1))
+        } else {
+            None
+        };
+        state.pop(2);
+        rv
+    }
+
+    fn get_int(&self, key: &str) -> Option<i64> {
+        let mut state = self.state.lock().unwrap();
+        self.push_value(key, &mut state); // S: D d <value>
+        let rv = if state.is_integer(-1) {
+            Some(state.check_integer(-1))
+        } else {
+            None
+        };
+        state.pop(2);
+        rv
+    }
 }
 
 impl Task for LuaTask {
     fn name(&self) -> String {
-        self.get_string("name")
+        self.get_string("name").unwrap()
     }
 
     fn command(&self) -> String {
-        self.get_string("command")
+        self.get_string("command").unwrap()
     }
 
     fn should_run(&self, path: &path::Path) -> bool {
         let mut state = self.state.lock().unwrap();
-        state.push_integer(self.key); // S: D key
-        state.get_table(1); // S: D d
-        state.push_string("should_run"); // S: D d <key>
-        state.get_table(-2); // S: D d <value>
+        self.push_value("should_run", &mut state);
         if state.is_nil(-1) {
             // should_run not in dictionary.
             state.pop(2);
@@ -63,6 +81,21 @@ impl Task for LuaTask {
         state.pop(2);
         rv
     }
+
+    fn start_delay(&self) -> time::Duration {
+        if let Some(delay_ms) = self.get_int("start_delay") {
+            return time::Duration::milliseconds(delay_ms);
+        }
+        time::Duration::milliseconds(50)
+    }
+
+    fn redirect_stdout(&self) -> Option<path::PathBuf> {
+        if let Some(redirect_stdout) = self.get_string("redirect_stdout") {
+            return Some(path::PathBuf::from(redirect_stdout));
+        }
+        None
+    }
+
 }
 
 #[allow(non_snake_case)]

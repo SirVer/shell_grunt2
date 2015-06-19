@@ -63,6 +63,13 @@ impl RebuildCtrPCache {
 
 impl Task for RebuildCtrPCache {
     fn name(&self) -> &str { "Rebuilding CtrlP cache" }
+    fn should_run(&self, path: &path::Path) -> bool {
+        match path.file_name() {
+            Some(f) => return f.to_string_lossy() != "tags",
+            None => (),
+        }
+        true
+    }
     fn command(&self) -> &str {
         "find . -type f \
             -and -not -iname *.png \
@@ -147,7 +154,7 @@ fn main() {
   let (events_tx, events_rx) = mpsc::channel();
   let mut watcher: RecommendedWatcher = Watcher::new(events_tx).unwrap();
 
-  let tasks: Vec<Box<Task>> = vec![ Box::new(Ctags), Box::new(RebuildCtrPCache::new()) ];
+  let tasks: Vec<Box<Task>> = vec![ Box::new(RebuildCtrPCache::new()), Box::new(Ctags) ];
 
   watcher.watch(&path::Path::new(".")).unwrap();
 
@@ -165,7 +172,6 @@ fn main() {
                       });
                   entry.last_seen = time::PreciseTime::now();
                   entry.task = work_item;
-                  println!("#hrapp work_item.name(): {:?}", work_item.name());
               }
               Err(err) => {
                   match err {

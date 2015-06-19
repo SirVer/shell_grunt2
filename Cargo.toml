@@ -7,6 +7,7 @@ authors = ["Holger Rapp <HolgerRapp@gmx.net>"]
 term = "0.2"
 notify = "^2.0"
 time = "0.1"
+libc = "*"
 
 [dependencies.lua]
 git = "https://github.com/jcmoyer/rust-lua53"

@@ -37,10 +37,10 @@ pub fn loop_forever(tasks: Vec<Box<Task>>) {
                   match err {
                       mpsc::TryRecvError::Empty => {
                           // Nothing to receive. See if we need to work on some items.
-                          let mut done = HashSet::new();
+                          let mut done = HashSet::<String>::new();
                           find_tasks_to_run(&mut done, &mut work_items);
 
-                          for key in done {
+                          for key in &done {
                               work_items.remove(key);
                           }
                           thread::sleep_ms(250);
@@ -73,19 +73,20 @@ struct Item<'a> {
   task: &'a Box<Task>,
 }
 
-fn find_tasks_to_run<'a, 'b>(done: &'a mut HashSet<&'b str>,
-                             work_items: &'a mut HashMap<&'b str, Item>) {
+fn find_tasks_to_run(done: &mut HashSet<String>,
+                             work_items: &mut HashMap<String, Item>) {
     for (entry_name, entry) in work_items {
         if entry.last_seen.to(time::PreciseTime::now()) > entry.task.start_delay() {
             run_task(&**entry.task);
-            done.insert(entry_name);
+            done.insert(entry_name.clone());
         }
     }
 }
 
 /// Dispatches to 'program' with 'str'.
 fn run_task(task: &Task) {
-    let args = task.command().split_whitespace().collect::<Vec<&str>>();
+    let command = task.command();
+    let args = command.split_whitespace().collect::<Vec<&str>>();
     let mut terminal = term::stdout().unwrap();
     write!(terminal, "{} ... ", task.name()).unwrap();
     terminal.flush().unwrap();

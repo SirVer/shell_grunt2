@@ -96,6 +96,13 @@ impl Task for LuaTask {
         None
     }
 
+    fn redirect_stderr(&self) -> Option<path::PathBuf> {
+        if let Some(redirect_stderr) = self.get_string("redirect_stderr") {
+            return Some(path::PathBuf::from(redirect_stderr));
+        }
+        None
+    }
+
 }
 
 #[allow(non_snake_case)]
@@ -156,15 +163,6 @@ fn inject_path_functions(state: &mut lua::State) {
     state.set_table(-3);
 
     state.pop(1);
-
-	// Also add in string.bformat to use boost::format instead, so that we get
-	// // proper localisation.
-	// lua_getglobal(L, "string");  // S: string_lib
-	// lua_pushstring(L, "bformat");  // S: string_lib "bformat"
-	// lua_pushcfunction(L, &L_string_bformat);  // S: string_lib "bformat" function
-	// lua_settable(L, -3);  // S: string_lib
-	// lua_pop(L, 1);
-
 }
 
 // TODO(sirver): error handling
@@ -186,13 +184,10 @@ pub fn run_file(path: &path::Path) -> Vec<Box<Task>> {
   state.push_nil(); // S: D nil
   while state.next(-2) {
       let key = state.check_integer(-2); // S: D key value
-      // NOCOM(#sirver): check that it is a table.
-      // let value = state.check_table(-1);
       state.pop(1); // S: D key
       tasks.push(
           Box::new(LuaTask::new(state_arc.clone(), key)) as Box<Task>);
   }
   // S: D
-  println!("#sirver rv: {:?}", rv);
   tasks
 }

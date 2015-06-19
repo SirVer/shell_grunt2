@@ -2,16 +2,6 @@ extern crate watcher;
 extern crate time;
 
 use std::path;
-use std::result;
-
-use watcher::Task;
-
-#[derive(Debug)]
-pub enum Error {
-    SubcommandFailed,
-}
-
-pub type Result<T> = result::Result<T, Error>;
 
 // struct Ctags;
 // impl Task for Ctags {
@@ -76,10 +66,9 @@ pub type Result<T> = result::Result<T, Error>;
 fn main() {
   // let tasks: Vec<Box<Task>> = vec![ Box::new(RebuildCtrPCache::new()), Box::new(Ctags) ];
 
+    // NOCOM(#sirver): Watch the watch file.
+    // NOCOM(#sirver): add command line options.
     let tasks = watcher::lua_task::run_file(path::Path::new("watcher.lua"));
-    for t in &tasks {
-        println!("#sirver t.name(): {:?}", t.name());
-    }
     watcher::loop_forever(tasks);
 
 }

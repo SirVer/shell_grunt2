@@ -92,6 +92,7 @@ fn run_task(task: &Task) {
     terminal.flush().unwrap();
 
     let redirect_stdout = task.redirect_stdout();
+    let redirect_stderr = task.redirect_stderr();
     let mut child = process::Command::new(args[0])
         .args(&args[1..])
         .stdin(process::Stdio::inherit())
@@ -100,30 +101,45 @@ fn run_task(task: &Task) {
         } else {
             process::Stdio::null()
         })
-        .stderr(process::Stdio::null())
+        .stderr(if redirect_stderr.is_some() {
+            process::Stdio::piped()
+        } else {
+            process::Stdio::null()
+        })
         .spawn()
         .unwrap_or_else(|e| {
             panic!("failed to execute: {}", e)
         });
 
+    let success =
     match child.wait().unwrap().code() {
-        Some(0) => {
-            terminal.fg(term::color::GREEN).unwrap();
-            write!(terminal, "Success. ").unwrap();
+        Some(code) => {
+            code == 0
+        },
+        None => false,
+    };
 
-            if let Some(redirect_stdout) = redirect_stdout {
-                let mut s = String::new();
-                child.stdout.unwrap().read_to_string(&mut s).unwrap();
-                let mut file = File::create(redirect_stdout).unwrap();
-                file.write_all(&s.into_bytes()).unwrap();
-            }
-        }
-        _ => {
-            terminal.fg(term::color::RED).unwrap();
-            write!(terminal, "Failed. ").unwrap();
-        }
+    if success {
+        terminal.fg(term::color::GREEN).unwrap();
+        write!(terminal, "Success. ").unwrap();
+    } else {
+        terminal.fg(term::color::RED).unwrap();
+        write!(terminal, "Failed. ").unwrap();
     }
     terminal.reset().unwrap();
     writeln!(terminal, "").unwrap();
 
+    if let Some(redirect_stdout) = redirect_stdout {
+        let mut s = String::new();
+        child.stdout.unwrap().read_to_string(&mut s).unwrap();
+        let mut file = File::create(redirect_stdout).unwrap();
+        file.write_all(&s.into_bytes()).unwrap();
+    }
+
+    if let Some(redirect_stderr) = redirect_stderr {
+        let mut s = String::new();
+        child.stderr.unwrap().read_to_string(&mut s).unwrap();
+        let mut file = File::create(redirect_stderr).unwrap();
+        file.write_all(&s.into_bytes()).unwrap();
+    }
 }

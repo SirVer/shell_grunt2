@@ -1,5 +1,4 @@
 extern crate notify;
-extern crate term;
 extern crate time;
 
 use self::notify::Watcher;
@@ -12,60 +11,13 @@ use std::sync::mpsc;
 use std::thread;
 use super::task::Task;
 
-pub fn loop_forever(tasks: Vec<Box<Task>>) {
-  let (events_tx, events_rx) = mpsc::channel();
-  let mut watcher: notify::RecommendedWatcher = notify::Watcher::new(events_tx).unwrap();
-
-  watcher.watch(&path::Path::new(".")).unwrap();
-
-  let (work_items_tx, work_items_rx) = mpsc::channel::<&Box<Task>>();
-  let _guard = thread::scoped(move || {
-      let mut work_items = HashMap::new();
-      loop {
-          // See if there is an item available.
-          match work_items_rx.try_recv() {
-              Ok(work_item) => {
-                  let entry =
-                      work_items.entry(work_item.name()).or_insert(Item {
-                          last_seen: time::PreciseTime::now(),
-                          task: work_item,
-                      });
-                  entry.last_seen = time::PreciseTime::now();
-                  entry.task = work_item;
-              }
-              Err(err) => {
-                  match err {
-                      mpsc::TryRecvError::Empty => {
-                          // Nothing to receive. See if we need to work on some items.
-                          let mut done = HashSet::<String>::new();
-                          find_tasks_to_run(&mut done, &mut work_items);
-
-                          for key in &done {
-                              work_items.remove(key);
-                          }
-                          thread::sleep_ms(250);
-                      },
-                      mpsc::TryRecvError::Disconnected => break,
-                  }
-              }
-          };
-      }
-  });
-
-  loop {
-      let ev = match events_rx.recv() {
-          Ok(ev) => ev,
-          Err(err) => panic!("{}", err),
-      };
-
-      if let Some(ref path) = ev.path {
-          for task in &tasks {
-              if task.should_run(path) {
-                  work_items_tx.send(task).unwrap();
-              }
-          }
-      }
-  }
+pub struct ShellGrunt2<'a> {
+    tasks: &'a[Box<Task>],
+    // NOCOM(#sirver): maybe try adding in a &[] view
+    worker: thread::JoinGuard<'a, ()>,
+    // _watcher: notify::RecommendedWatcher,
+    events_rx: mpsc::Receiver<notify::Event>,
+    work_items_tx: mpsc::Sender<&'a Box<Task>>,
 }
 
 struct Item<'a> {
@@ -73,73 +25,84 @@ struct Item<'a> {
   task: &'a Box<Task>,
 }
 
-fn find_tasks_to_run(done: &mut HashSet<String>,
-                             work_items: &mut HashMap<String, Item>) {
-    for (entry_name, entry) in work_items {
-        if entry.last_seen.to(time::PreciseTime::now()) > entry.task.start_delay() {
-            run_task(&**entry.task);
-            done.insert(entry_name.clone());
+
+impl<'a> ShellGrunt2<'a> {
+    pub fn new(tasks: &'a [Box<Task>], events_rx: mpsc::Receiver<notify::Event>) -> ShellGrunt2<'a> {
+
+        let (work_items_tx, work_items_rx) = mpsc::channel::<&'a Box<Task>>();
+        let child: thread::JoinGuard<'a, ()> = thread::scoped(move || {
+            let mut work_items = HashMap::new();
+            loop {
+                // See if there is an item available.
+                match work_items_rx.try_recv() {
+                    Ok(work_item) => {
+                        println!("ALIVE {}:{}", file!(), line!());
+                        let name = work_item.name();
+                        println!("ALIVE {}:{}", file!(), line!());
+                        let entry =
+                            work_items.entry(name).or_insert(Item {
+                                last_seen: time::PreciseTime::now(),
+                                task: work_item,
+                            });
+                        println!("ALIVE {}:{}", file!(), line!());
+                        entry.last_seen = time::PreciseTime::now();
+                        println!("ALIVE {}:{}", file!(), line!());
+                        entry.task = work_item;
+                        println!("ALIVE {}:{}", file!(), line!());
+                    },
+                    Err(err) => {
+                        match err {
+                            mpsc::TryRecvError::Empty => {
+                                // Nothing to receive. See if we need to work on some items.
+                                let mut done = HashSet::<String>::new();
+                        println!("ALIVE {}:{}", file!(), line!());
+                                find_tasks_to_run(&mut done, &mut work_items);
+
+                                for key in &done {
+                                    work_items.remove(key);
+                                }
+                                thread::sleep_ms(250);
+                            },
+                            mpsc::TryRecvError::Disconnected => break,
+                        }
+                    }
+                };
+            }
+        });
+
+        ShellGrunt2 {
+            tasks: tasks,
+            worker: child,
+            // _watcher: watcher,
+            events_rx: events_rx,
+            work_items_tx: work_items_tx,
+        }
+    }
+
+    pub fn spin(&self) {
+        let ev = match self.events_rx.recv() {
+            Ok(ev) => ev,
+            Err(err) => panic!("{}", err),
+        };
+
+        if let Some(ref path) = ev.path {
+            for task in self.tasks {
+                if task.should_run(path) {
+                    println!("ALIVE {}:{}", file!(), line!());
+                    self.work_items_tx.send(&task).unwrap();
+                }
+            }
         }
     }
 }
 
-/// Dispatches to 'program' with 'str'.
-fn run_task(task: &Task) {
-    let command = task.command();
-    let args = command.split_whitespace().collect::<Vec<&str>>();
-    let mut terminal = term::stdout().unwrap();
-    write!(terminal, "{} ... ", task.name()).unwrap();
-    terminal.flush().unwrap();
 
-    let redirect_stdout = task.redirect_stdout();
-    let redirect_stderr = task.redirect_stderr();
-    let mut child = process::Command::new(args[0])
-        .args(&args[1..])
-        .stdin(process::Stdio::inherit())
-        .stdout(if redirect_stdout.is_some() {
-            process::Stdio::piped()
-        } else {
-            process::Stdio::null()
-        })
-        .stderr(if redirect_stderr.is_some() {
-            process::Stdio::piped()
-        } else {
-            process::Stdio::null()
-        })
-        .spawn()
-        .unwrap_or_else(|e| {
-            panic!("failed to execute: {}", e)
-        });
-
-    let success =
-    match child.wait().unwrap().code() {
-        Some(code) => {
-            code == 0
-        },
-        None => false,
-    };
-
-    if success {
-        terminal.fg(term::color::GREEN).unwrap();
-        write!(terminal, "Success. ").unwrap();
-    } else {
-        terminal.fg(term::color::RED).unwrap();
-        write!(terminal, "Failed. ").unwrap();
-    }
-    terminal.reset().unwrap();
-    writeln!(terminal, "").unwrap();
-
-    if let Some(redirect_stdout) = redirect_stdout {
-        let mut s = String::new();
-        child.stdout.unwrap().read_to_string(&mut s).unwrap();
-        let mut file = File::create(redirect_stdout).unwrap();
-        file.write_all(&s.into_bytes()).unwrap();
-    }
-
-    if let Some(redirect_stderr) = redirect_stderr {
-        let mut s = String::new();
-        child.stderr.unwrap().read_to_string(&mut s).unwrap();
-        let mut file = File::create(redirect_stderr).unwrap();
-        file.write_all(&s.into_bytes()).unwrap();
+fn find_tasks_to_run(done: &mut HashSet<String>,
+                             work_items: &mut HashMap<String, Item>) {
+    for (entry_name, entry) in work_items {
+        if entry.last_seen.to(time::PreciseTime::now()) > entry.task.start_delay() {
+            entry.task.run();
+            done.insert(entry_name.clone());
+        }
     }
 }

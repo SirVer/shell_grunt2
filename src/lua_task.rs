@@ -5,7 +5,7 @@ extern crate time;
 use self::lua::ffi::lua_State;
 use std::path;
 use std::sync::{Arc, Mutex};
-use task::Task;
+use task::{Task, ShellTask};
 
 
 struct LuaTask {
@@ -63,10 +63,6 @@ impl Task for LuaTask {
         self.get_string("name").unwrap()
     }
 
-    fn command(&self) -> String {
-        self.get_string("command").unwrap()
-    }
-
     fn should_run(&self, path: &path::Path) -> bool {
         let mut state = self.state.lock().unwrap();
         self.push_value("should_run", &mut state);
@@ -87,6 +83,12 @@ impl Task for LuaTask {
             return time::Duration::milliseconds(delay_ms);
         }
         time::Duration::milliseconds(50)
+    }
+}
+
+impl ShellTask for LuaTask {
+    fn command(&self) -> String {
+        self.get_string("command").unwrap()
     }
 
     fn redirect_stdout(&self) -> Option<path::PathBuf> {

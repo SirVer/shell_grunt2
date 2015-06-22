@@ -5,4 +5,4 @@ pub mod dispatch;
 pub mod lua_task;
 
 pub use task::Task;
-pub use dispatch::loop_forever;
+pub use dispatch::ShellGrunt2;

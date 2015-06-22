@@ -1,13 +1,14 @@
 [package]
-name = "watcher"
+name = "shell_grunt2"
 version = "0.1.0"
 authors = ["Holger Rapp <HolgerRapp@gmx.net>"]
 
 [dependencies]
-term = "0.2"
+libc = "0.1.8"
 notify = "^2.0"
+term = "0.2"
 time = "0.1"
-libc = "*"
+clap = "0.11.0"
 
 [dependencies.lua]
 git = "https://github.com/SirVer/rust-lua53.git"

@@ -1,21 +1,15 @@
 extern crate notify;
 extern crate time;
 
-use self::notify::Watcher;
 use std::collections::{HashMap, HashSet};
-use std::fs::File;
-use std::io::{Write, Read};
-use std::path;
-use std::process;
 use std::sync::mpsc;
 use std::thread;
 use super::task::Task;
 
 pub struct ShellGrunt2<'a> {
     tasks: &'a[Box<Task>],
-    // NOCOM(#sirver): maybe try adding in a &[] view
-    worker: thread::JoinGuard<'a, ()>,
-    // _watcher: notify::RecommendedWatcher,
+    // You need to close work_items_tx, before this will join.
+    _worker: thread::JoinGuard<'a, ()>,
     events_rx: mpsc::Receiver<notify::Event>,
     work_items_tx: mpsc::Sender<&'a Box<Task>>,
 }
@@ -36,26 +30,20 @@ impl<'a> ShellGrunt2<'a> {
                 // See if there is an item available.
                 match work_items_rx.try_recv() {
                     Ok(work_item) => {
-                        println!("ALIVE {}:{}", file!(), line!());
                         let name = work_item.name();
-                        println!("ALIVE {}:{}", file!(), line!());
                         let entry =
                             work_items.entry(name).or_insert(Item {
                                 last_seen: time::PreciseTime::now(),
                                 task: work_item,
                             });
-                        println!("ALIVE {}:{}", file!(), line!());
                         entry.last_seen = time::PreciseTime::now();
-                        println!("ALIVE {}:{}", file!(), line!());
                         entry.task = work_item;
-                        println!("ALIVE {}:{}", file!(), line!());
                     },
                     Err(err) => {
                         match err {
                             mpsc::TryRecvError::Empty => {
                                 // Nothing to receive. See if we need to work on some items.
                                 let mut done = HashSet::<String>::new();
-                        println!("ALIVE {}:{}", file!(), line!());
                                 find_tasks_to_run(&mut done, &mut work_items);
 
                                 for key in &done {
@@ -72,30 +60,31 @@ impl<'a> ShellGrunt2<'a> {
 
         ShellGrunt2 {
             tasks: tasks,
-            worker: child,
-            // _watcher: watcher,
+            _worker: child,
             events_rx: events_rx,
             work_items_tx: work_items_tx,
         }
     }
 
     pub fn spin(&self) {
-        let ev = match self.events_rx.recv() {
+        let ev = match self.events_rx.try_recv() {
             Ok(ev) => ev,
-            Err(err) => panic!("{}", err),
+            Err(_) => return,
         };
 
         if let Some(ref path) = ev.path {
             for task in self.tasks {
                 if task.should_run(path) {
-                    println!("ALIVE {}:{}", file!(), line!());
                     self.work_items_tx.send(&task).unwrap();
                 }
             }
         }
     }
-}
 
+    pub fn cleanup(self) {
+        drop(self.work_items_tx);
+    }
+}
 
 fn find_tasks_to_run(done: &mut HashSet<String>,
                              work_items: &mut HashMap<String, Item>) {

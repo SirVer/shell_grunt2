@@ -1,20 +1,15 @@
 extern crate term;
 extern crate time;
 
-use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{Write, Read};
 use std::path;
 use std::process;
-use std::sync::mpsc;
-use std::thread;
-
 
 pub trait Runnable {
     fn run(&self);
 }
 
-// NOCOM(#sirver): pull out a ShellTask.
 pub trait Task: Sync + Runnable {
     fn name(&self) -> String;
     fn should_run(&self, _: &path::Path) -> bool;

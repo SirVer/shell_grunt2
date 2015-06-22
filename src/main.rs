@@ -3,84 +3,27 @@ extern crate notify;
 extern crate shell_grunt2;
 extern crate time;
 
-use shell_grunt2::task::{Task, Runnable};
 use self::notify::Watcher;
-use std::sync::mpsc;
-use std::sync::atomic::AtomicBool;
+use shell_grunt2::task::{Task, Runnable};
 use std::path;
-use std::process;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
+use std::thread;
 
-// struct Ctags;
-// impl Task for Ctags {
-    // fn name(&self) -> &str { "Running ctags" }
-    // fn command(&self) -> &str { "ctags -R cityblock java" }
-    // fn should_run(&self, path: &path::Path) -> bool {
-        // match path.extension() {
-            // None => return false,
-            // Some(ext) => ext,
-        // };
-        // true
-    // }
-    // fn start_delay(&self) -> time::Duration {
-        // time::Duration::milliseconds(500)
-    // }
-// }
-
-// struct RebuildCtrPCache {
-    // output_file: path::PathBuf,
-// }
-
-// impl RebuildCtrPCache {
-    // fn new() -> RebuildCtrPCache {
-        // RebuildCtrPCache {
-            // output_file: path::PathBuf::from(
-        // "/usr/local/google/home/hrapp/.cache/ctrlp/%usr%local%google%home%hrapp%prog%sc%src%google3.txt"
-            // ),
-        // }
-    // }
-// }
-
-// impl Task for RebuildCtrPCache {
-    // fn name(&self) -> &str { "Rebuilding CtrlP cache" }
-    // fn should_run(&self, path: &path::Path) -> bool {
-        // match path.file_name() {
-            // Some(f) => return f.to_string_lossy() != "tags",
-            // None => (),
-        // }
-        // true
-    // }
-    // fn command(&self) -> &str {
-        // "find . -type f \
-            // -and -not -iname *.png \
-            // -and -not -iname *.jpg \
-            // -and -not -iname *.class \
-            // -and -not -iname *.jar \
-            // -and -not -iregex .*\\.git\\/.* \
-            // -and -not -iregex .*\\.gradle\\/.* \
-            // -and -not -iregex .*\\java\\/.* \
-        // "
-    // }
-
-    // fn redirect_stdout(&self) -> Option<&path::Path> {
-        // Some(&self.output_file)
-    // }
-
-    // fn start_delay(&self) -> time::Duration {
-        // time::Duration::milliseconds(500)
-    // }
-// }
-
-struct ReloadWatcherFile {
+// TODO(sirver): This whole thing got way too complicated. The multiple threads are not really
+// needed at all, everything can easily be done via polling in a single thread.
+struct ReloadWatcherFile<'a> {
     file_name: String,
+    should_restart: &'a AtomicBool,
 }
 
-impl Runnable for ReloadWatcherFile {
+impl<'a> Runnable for ReloadWatcherFile<'a> {
     fn run(&self) {
-        process::exit(0);
+        self.should_restart.store(true, Ordering::Relaxed);
     }
 }
 
-impl Task for ReloadWatcherFile {
+impl<'a> Task for ReloadWatcherFile<'a> {
     fn name(&self) -> String {
         format!("Reloading {}", self.file_name)
     }
@@ -97,6 +40,32 @@ impl Task for ReloadWatcherFile {
     }
 }
 
+fn watch_file_events(watcher_file: &str) {
+    // Ideally, the RecommendedWatcher would be owned by ShellGrunt2, but whenever I try that, the
+    // tool crashes whenever it should receive an event on the channel. So it needs to stay
+    // outside. :(
+    let (events_tx, events_rx) = mpsc::channel();
+    let mut watcher: notify::RecommendedWatcher = notify::Watcher::new(events_tx).unwrap();
+    watcher.watch(&path::Path::new(".")).unwrap();
+
+    let should_restart = AtomicBool::new(false);
+
+    let mut tasks: Vec<Box<Task>> = vec![ Box::new(ReloadWatcherFile{
+        file_name: watcher_file.to_string(),
+        should_restart: &should_restart,
+    }) ];
+    for task in shell_grunt2::lua_task::run_file(path::Path::new(watcher_file)) {
+        tasks.push(task);
+    }
+    let shell_grunt2 = shell_grunt2::ShellGrunt2::new(&tasks, events_rx);
+
+    while !should_restart.load(Ordering::Relaxed) {
+        shell_grunt2.spin();
+        thread::sleep_ms(50);
+    }
+    shell_grunt2.cleanup();
+}
+
 fn main() {
     let matches = clap::App::new("shell_grunt2")
         .about("Watches the file system and executes commands from a Lua file.")
@@ -107,22 +76,9 @@ fn main() {
     let watcher_file = matches.value_of("file").unwrap_or("watcher.lua");
 
   // let tasks: Vec<Box<Task>> = vec![ Box::new(RebuildCtrPCache::new()), Box::new(Ctags) ];
-    let (events_tx, events_rx) = mpsc::channel();
-    let mut watcher: notify::RecommendedWatcher = notify::Watcher::new(events_tx).unwrap();
-    watcher.watch(&path::Path::new(".")).unwrap();
-
-
-    // NOCOM(#sirver): Watch the watch file.
-    // NOCOM(#sirver): add command line options.
-    let mut tasks: Vec<Box<Task>> = vec![ Box::new(ReloadWatcherFile{
-        file_name: watcher_file.to_string()
-    }) ];
-    for task in shell_grunt2::lua_task::run_file(path::Path::new(watcher_file)) {
-        tasks.push(task);
-    }
-    let shell_grunt2 = shell_grunt2::ShellGrunt2::new(&tasks, events_rx);
 
     loop {
-        shell_grunt2.spin();
+        println!("Watching file system with tasks from {}", watcher_file);
+        watch_file_events(&watcher_file);
     }
 }

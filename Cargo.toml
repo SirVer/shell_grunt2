@@ -4,12 +4,11 @@ version = "0.1.0"
 authors = ["Holger Rapp <HolgerRapp@gmx.net>"]
 
 [dependencies]
-libc = "0.1.8"
+libc = "^0.1.8"
 notify = "^2.0"
-term = "0.2"
-time = "0.1"
-clap = "0.11.0"
+term = "^0.2"
+time = "^0.1"
+clap = "^0.11.0"
 
 [dependencies.lua]
-git = "https://github.com/SirVer/rust-lua53.git"
-branch = "pull_build"
+git = "https://github.com/jcmoyer/rust-lua53"

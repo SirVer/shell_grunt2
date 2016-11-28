@@ -6,24 +6,24 @@ extern crate time;
 use self::notify::Watcher;
 use shell_grunt2::task::{Task, Runnable};
 use std::path;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc;
+use std::sync::{mpsc, Mutex};
 use std::thread;
 
 // TODO(sirver): This whole thing got way too complicated. The multiple threads are not really
 // needed at all, everything can easily be done via polling in a single thread.
-struct ReloadWatcherFile<'a> {
+struct ReloadWatcherFile {
     file_name: String,
-    should_restart: &'a AtomicBool,
+    should_restart_tx: Mutex<mpsc::Sender<()>>,
 }
 
-impl<'a> Runnable for ReloadWatcherFile<'a> {
+impl Runnable for ReloadWatcherFile {
     fn run(&self) {
-        self.should_restart.store(true, Ordering::Relaxed);
+        let should_restart_tx = self.should_restart_tx.lock().unwrap(); 
+        should_restart_tx.send(()).unwrap();
     }
 }
 
-impl<'a> Task for ReloadWatcherFile<'a> {
+impl Task for ReloadWatcherFile {
     fn name(&self) -> String {
         format!("Reloading {}", self.file_name)
     }
@@ -48,20 +48,23 @@ fn watch_file_events(watcher_file: &str) {
     let mut watcher: notify::RecommendedWatcher = notify::Watcher::new(events_tx).unwrap();
     watcher.watch(&path::Path::new(".")).unwrap();
 
-    let should_restart = AtomicBool::new(false);
-
+    let (should_restart_tx, should_restart_rx) = mpsc::channel();
     let mut tasks: Vec<Box<Task>> = vec![ Box::new(ReloadWatcherFile{
         file_name: watcher_file.to_string(),
-        should_restart: &should_restart,
+        should_restart_tx: Mutex::new(should_restart_tx),
     }) ];
     for task in shell_grunt2::lua_task::run_file(path::Path::new(watcher_file)) {
         tasks.push(task);
     }
-    let shell_grunt2 = shell_grunt2::ShellGrunt2::new(&tasks, events_rx);
-
-    while !should_restart.load(Ordering::Relaxed) {
-        shell_grunt2.spin();
-        thread::sleep_ms(50);
+    let mut shell_grunt2 = shell_grunt2::ShellGrunt2::new(&tasks, events_rx);
+    loop {
+        thread::sleep(std::time::Duration::from_millis(50));
+        match should_restart_rx.try_recv() {
+            Err(mpsc::TryRecvError::Empty) => {
+                shell_grunt2.spin();
+            },
+            Ok (_) | Err(_) => break,
+        }
     }
     shell_grunt2.cleanup();
 }

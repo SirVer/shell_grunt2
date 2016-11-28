@@ -37,7 +37,7 @@ impl LuaTask {
         let mut state = self.state.lock().unwrap();
         self.push_value(key, &mut state); // S: D d <value>
         let rv = if state.is_string(-1) {
-            Some(state.check_string(-1))
+            Some(state.check_string(-1).to_string())
         } else {
             None
         };
@@ -110,7 +110,7 @@ impl ShellTask for LuaTask {
 #[allow(non_snake_case)]
 unsafe extern "C" fn basename(L: *mut lua_State) -> libc::c_int {
     let mut state = lua::State::from_ptr(L);
-    let string: String = state.check_string(-1);
+    let string: String = state.check_string(-1).to_string();
     let p = path::Path::new(&string);
     match p.file_name() {
         Some(s) => {
@@ -124,7 +124,7 @@ unsafe extern "C" fn basename(L: *mut lua_State) -> libc::c_int {
 #[allow(non_snake_case)]
 unsafe extern "C" fn dirname(L: *mut lua_State) -> libc::c_int {
     let mut state = lua::State::from_ptr(L);
-    let string: String = state.check_string(-1);
+    let string: String = state.check_string(-1).to_string();
     let p = path::Path::new(&string);
     match p.parent() {
         Some(s) => {
@@ -138,7 +138,7 @@ unsafe extern "C" fn dirname(L: *mut lua_State) -> libc::c_int {
 #[allow(non_snake_case)]
 unsafe extern "C" fn ext(L: *mut lua_State) -> libc::c_int {
     let mut state = lua::State::from_ptr(L);
-    let string: String = state.check_string(-1);
+    let string: String = state.check_string(-1).to_string();
     let p = path::Path::new(&string);
     match p.extension() {
         Some(ext) => {

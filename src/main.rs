@@ -64,7 +64,6 @@ fn watch_file_events(watcher_file: &str) {
             Ok (_) | Err(_) => break,
         }
     }
-    shell_grunt2.cleanup();
 }
 
 fn main() {

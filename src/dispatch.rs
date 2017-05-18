@@ -13,8 +13,6 @@ struct Item<'a> {
 pub struct ShellGrunt2<'a> {
     tasks: &'a [Box<Task>],
     events_rx: mpsc::Receiver<notify::DebouncedEvent>,
-    work_items_tx: mpsc::Sender<&'a Box<Task>>,
-    work_items_rx: mpsc::Receiver<&'a Box<Task>>,
     work_items: HashMap<String, Item<'a>>,
 }
 
@@ -23,13 +21,10 @@ impl<'a> ShellGrunt2<'a> {
                events_rx: mpsc::Receiver<notify::DebouncedEvent>)
                -> ShellGrunt2<'a> {
 
-        let (work_items_tx, work_items_rx) = mpsc::channel::<&'a Box<Task>>();
         ShellGrunt2 {
             tasks: tasks,
             work_items: HashMap::new(),
             events_rx: events_rx,
-            work_items_tx: work_items_tx,
-            work_items_rx: work_items_rx,
         }
     }
 
@@ -60,52 +55,33 @@ impl<'a> ShellGrunt2<'a> {
         };
 
         for task in self.tasks {
-            if task.should_run(&path) {
-                self.work_items_tx.send(&task).unwrap();
+            if !task.should_run(&path) {
+                continue;
             }
+
+            let entry = self.work_items.entry(task.name()).or_insert(Item {
+                last_seen:
+                    time::PreciseTime::now(),
+                    task: &task,
+            });
+            entry.last_seen = time::PreciseTime::now();
+            entry.task = &task;
         }
     }
 
     fn check_for_new_work(&mut self) {
-        // See if there is an item available.
-        match self.work_items_rx.try_recv() {
-            Ok(work_item) => {
-                let name = work_item.name();
-                let entry = self.work_items.entry(name).or_insert(Item {
-                                                                      last_seen:
-                                                                          time::PreciseTime::now(),
-                                                                      task: work_item,
-                                                                  });
-                entry.last_seen = time::PreciseTime::now();
-                entry.task = work_item;
+        let mut done = HashSet::new();
+
+        let now = time::PreciseTime::now();
+        for (entry_name, entry) in &self.work_items {
+            if entry.last_seen.to(now) > entry.task.start_delay() {
+                entry.task.run();
+                done.insert(entry_name.to_string());
             }
-            Err(err) => {
-                match err {
-                    mpsc::TryRecvError::Empty => {
-                        // Nothing to receive. See if we need to work on some items.
-                        let mut done = HashSet::<String>::new();
-                        find_tasks_to_run(&mut done, &mut self.work_items);
+        }
 
-                        for key in &done {
-                            self.work_items.remove(key);
-                        }
-                    }
-                    mpsc::TryRecvError::Disconnected => (),
-                }
-            }
-        };
-    }
-
-    pub fn cleanup(self) {
-        drop(self.work_items_tx);
-    }
-}
-
-fn find_tasks_to_run(done: &mut HashSet<String>, work_items: &mut HashMap<String, Item>) {
-    for (entry_name, entry) in work_items {
-        if entry.last_seen.to(time::PreciseTime::now()) > entry.task.start_delay() {
-            entry.task.run();
-            done.insert(entry_name.clone());
+        for key in &done {
+            self.work_items.remove(key);
         }
     }
 }

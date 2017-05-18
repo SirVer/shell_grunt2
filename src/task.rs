@@ -11,6 +11,7 @@ pub trait Runnable {
 }
 
 pub trait Task: Runnable {
+    // NOCOM(#sirver): Return 'a &str?
     fn name(&self) -> String;
     fn should_run(&self, _: &path::Path) -> bool;
     fn start_delay(&self) -> time::Duration;

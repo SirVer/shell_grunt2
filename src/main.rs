@@ -7,20 +7,17 @@ use notify::Watcher;
 use shell_grunt2::task::{Task, Runnable};
 use std::time::Duration;
 use std::path;
-use std::sync::{mpsc, Mutex};
+use std::sync::{mpsc};
 use std::thread;
 
-// TODO(sirver): This whole thing got way too complicated. The multiple threads are not really
-// needed at all, everything can easily be done via polling in a single thread.
 struct ReloadWatcherFile {
     file_name: String,
-    should_restart_tx: Mutex<mpsc::Sender<()>>,
+    should_restart_tx: mpsc::Sender<()>,
 }
 
 impl Runnable for ReloadWatcherFile {
     fn run(&self) {
-        let should_restart_tx = self.should_restart_tx.lock().unwrap(); 
-        should_restart_tx.send(()).unwrap();
+        self.should_restart_tx.send(()).unwrap();
     }
 }
 
@@ -52,7 +49,7 @@ fn watch_file_events(watcher_file: &str) {
     let (should_restart_tx, should_restart_rx) = mpsc::channel();
     let mut tasks: Vec<Box<Task>> = vec![ Box::new(ReloadWatcherFile{
         file_name: watcher_file.to_string(),
-        should_restart_tx: Mutex::new(should_restart_tx),
+        should_restart_tx
     }) ];
     for task in shell_grunt2::lua_task::run_file(path::Path::new(watcher_file)) {
         tasks.push(task);
@@ -78,8 +75,6 @@ fn main() {
             .help("Lua file to use [watcher.lua]")
         ).get_matches();
     let watcher_file = matches.value_of("file").unwrap_or("watcher.lua");
-
-  // let tasks: Vec<Box<Task>> = vec![ Box::new(RebuildCtrPCache::new()), Box::new(Ctags) ];
 
     loop {
         println!("Watching file system with tasks from {}", watcher_file);

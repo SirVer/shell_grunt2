@@ -4,21 +4,18 @@ extern crate time;
 
 use self::lua::ffi::lua_State;
 use std::path;
-use std::sync::{Arc, Mutex};
+use std::rc::Rc;
+use std::cell::RefCell;
 use task::{Task, ShellTask};
 
 
 struct LuaTask {
-    state: Arc<Mutex<lua::State>>,
+    state: Rc<RefCell<lua::State>>,
     key: i64,
 }
 
-// TODO(sirver): That is actually a lie I think. I do not know if it is valid to use the same lua
-// state in multiple threads - even if mutex protected.
-unsafe impl Sync for LuaTask {}
-
 impl LuaTask {
-    fn new(state: Arc<Mutex<lua::State>>, key: i64) -> LuaTask {
+    fn new(state: Rc<RefCell<lua::State>>, key: i64) -> LuaTask {
         LuaTask {
             state: state,
             key: key,
@@ -34,7 +31,7 @@ impl LuaTask {
     }
 
     fn get_string(&self, key: &str) -> Option<String> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.borrow_mut();
         self.push_value(key, &mut state); // S: D d <value>
         let rv = if state.is_string(-1) {
             Some(state.check_string(-1).to_string())
@@ -46,7 +43,7 @@ impl LuaTask {
     }
 
     fn get_int(&self, key: &str) -> Option<i64> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.borrow_mut();
         self.push_value(key, &mut state); // S: D d <value>
         let rv = if state.is_integer(-1) {
             Some(state.check_integer(-1))
@@ -64,7 +61,7 @@ impl Task for LuaTask {
     }
 
     fn should_run(&self, path: &path::Path) -> bool {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.borrow_mut();
         self.push_value("should_run", &mut state);
         if state.is_nil(-1) {
             // should_run not in dictionary.
@@ -180,15 +177,15 @@ pub fn run_file(path: &path::Path) -> Vec<Box<Task>> {
   inject_path_functions(&mut state);
 
   let mut tasks = Vec::new();
-  let state_arc = Arc::new(Mutex::new(state));
-  let mut state = state_arc.lock().unwrap();
+  let state_rc = Rc::new(RefCell::new(state));
+  let mut state = state_rc.borrow_mut();
 
   state.push_nil(); // S: D nil
   while state.next(-2) {
       let key = state.check_integer(-2); // S: D key value
       state.pop(1); // S: D key
       tasks.push(
-          Box::new(LuaTask::new(state_arc.clone(), key)) as Box<Task>);
+          Box::new(LuaTask::new(state_rc.clone(), key)) as Box<Task>);
   }
   // S: D
   tasks

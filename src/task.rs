@@ -10,7 +10,7 @@ pub trait Runnable {
     fn run(&self);
 }
 
-pub trait Task: Sync + Runnable {
+pub trait Task: Runnable {
     fn name(&self) -> String;
     fn should_run(&self, _: &path::Path) -> bool;
     fn start_delay(&self) -> time::Duration;

@@ -1,25 +1,27 @@
-extern crate notify;
-extern crate time;
+use notify;
+use time;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc;
 use super::task::Task;
 
 struct Item<'a> {
-  last_seen: time::PreciseTime,
-  task: &'a Box<Task>,
+    last_seen: time::PreciseTime,
+    task: &'a Box<Task>,
 }
 
 pub struct ShellGrunt2<'a> {
-    tasks: &'a[Box<Task>],
-    events_rx: mpsc::Receiver<notify::Event>,
+    tasks: &'a [Box<Task>],
+    events_rx: mpsc::Receiver<notify::DebouncedEvent>,
     work_items_tx: mpsc::Sender<&'a Box<Task>>,
     work_items_rx: mpsc::Receiver<&'a Box<Task>>,
-    work_items: HashMap<String, Item<'a>>
+    work_items: HashMap<String, Item<'a>>,
 }
 
 impl<'a> ShellGrunt2<'a> {
-    pub fn new(tasks: &'a [Box<Task>], events_rx: mpsc::Receiver<notify::Event>) -> ShellGrunt2<'a> {
+    pub fn new(tasks: &'a [Box<Task>],
+               events_rx: mpsc::Receiver<notify::DebouncedEvent>)
+               -> ShellGrunt2<'a> {
 
         let (work_items_tx, work_items_rx) = mpsc::channel::<&'a Box<Task>>();
         ShellGrunt2 {
@@ -39,11 +41,27 @@ impl<'a> ShellGrunt2<'a> {
             Err(_) => return,
         };
 
-        if let Some(ref path) = ev.path {
-            for task in self.tasks {
-                if task.should_run(path) {
-                    self.work_items_tx.send(&task).unwrap();
-                }
+        use notify::DebouncedEvent::*;
+
+        let path = match ev {
+            NoticeWrite(path) |
+            NoticeRemove(path) |
+            Create(path) |
+            Write(path) |
+            Remove(path) => path,
+
+            Rename(_, new_path) => new_path,
+
+            Error(err, path) => {
+                println!("#sirver err: {:#?},path: {:#?}", err, path);
+                return;
+            }
+            Rescan | Chmod(_) => return,
+        };
+
+        for task in self.tasks {
+            if task.should_run(&path) {
+                self.work_items_tx.send(&task).unwrap();
             }
         }
     }
@@ -53,14 +71,14 @@ impl<'a> ShellGrunt2<'a> {
         match self.work_items_rx.try_recv() {
             Ok(work_item) => {
                 let name = work_item.name();
-                let entry =
-                    self.work_items.entry(name).or_insert(Item {
-                        last_seen: time::PreciseTime::now(),
-                        task: work_item,
-                    });
+                let entry = self.work_items.entry(name).or_insert(Item {
+                                                                      last_seen:
+                                                                          time::PreciseTime::now(),
+                                                                      task: work_item,
+                                                                  });
                 entry.last_seen = time::PreciseTime::now();
                 entry.task = work_item;
-            },
+            }
             Err(err) => {
                 match err {
                     mpsc::TryRecvError::Empty => {
@@ -71,7 +89,7 @@ impl<'a> ShellGrunt2<'a> {
                         for key in &done {
                             self.work_items.remove(key);
                         }
-                    },
+                    }
                     mpsc::TryRecvError::Disconnected => (),
                 }
             }
@@ -83,8 +101,7 @@ impl<'a> ShellGrunt2<'a> {
     }
 }
 
-fn find_tasks_to_run(done: &mut HashSet<String>,
-                             work_items: &mut HashMap<String, Item>) {
+fn find_tasks_to_run(done: &mut HashSet<String>, work_items: &mut HashMap<String, Item>) {
     for (entry_name, entry) in work_items {
         if entry.last_seen.to(time::PreciseTime::now()) > entry.task.start_delay() {
             entry.task.run();

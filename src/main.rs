@@ -3,8 +3,9 @@ extern crate notify;
 extern crate shell_grunt2;
 extern crate time;
 
-use self::notify::Watcher;
+use notify::Watcher;
 use shell_grunt2::task::{Task, Runnable};
+use std::time::Duration;
 use std::path;
 use std::sync::{mpsc, Mutex};
 use std::thread;
@@ -45,8 +46,8 @@ fn watch_file_events(watcher_file: &str) {
     // tool crashes whenever it should receive an event on the channel. So it needs to stay
     // outside. :(
     let (events_tx, events_rx) = mpsc::channel();
-    let mut watcher: notify::RecommendedWatcher = notify::Watcher::new(events_tx).unwrap();
-    watcher.watch(&path::Path::new(".")).unwrap();
+    let mut watcher = notify::watcher(events_tx, Duration::from_millis(50)).unwrap();
+    watcher.watch(&path::Path::new("."), notify::RecursiveMode::Recursive).unwrap();
 
     let (should_restart_tx, should_restart_rx) = mpsc::channel();
     let mut tasks: Vec<Box<Task>> = vec![ Box::new(ReloadWatcherFile{

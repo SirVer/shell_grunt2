@@ -1,5 +1,10 @@
+extern crate crossbeam;
+extern crate floating_duration;
 extern crate notify;
+extern crate regex;
+extern crate term;
 extern crate time;
+#[macro_use] extern crate lazy_static;
 
 pub mod task;
 pub mod dispatch;

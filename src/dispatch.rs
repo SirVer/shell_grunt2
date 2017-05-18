@@ -48,7 +48,7 @@ impl<'a> ShellGrunt2<'a> {
             Rename(_, new_path) => new_path,
 
             Error(err, path) => {
-                println!("#sirver err: {:#?},path: {:#?}", err, path);
+                println!("Ignored error: {:?}, ({:?})", err, path);
                 return;
             }
             Rescan | Chmod(_) => return,

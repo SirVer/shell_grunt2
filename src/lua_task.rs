@@ -53,6 +53,18 @@ impl LuaTask {
         state.pop(2);
         rv
     }
+
+    fn get_bool(&self, key: &str) -> Option<bool> {
+        let mut state = self.state.borrow_mut();
+        self.push_value(key, &mut state); // S: D d <value>
+        let rv = if state.is_bool(-1) {
+            Some(state.to_bool(-1))
+        } else {
+            None
+        };
+        state.pop(2);
+        rv
+    }
 }
 
 impl Task for LuaTask {
@@ -102,6 +114,19 @@ impl ShellTask for LuaTask {
         None
     }
 
+    fn supress_stderr(&self) -> bool {
+        if let Some(redirect_stderr) = self.get_bool("supress_stderr") {
+            return redirect_stderr;
+        }
+        false
+    }
+
+    fn supress_stdout(&self) -> bool {
+        if let Some(redirect_stdout) = self.get_bool("supress_stdout") {
+            return redirect_stdout;
+        }
+        false
+    }
 }
 
 #[allow(non_snake_case)]

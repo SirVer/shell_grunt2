@@ -107,6 +107,13 @@ impl ShellTask for LuaTask {
         None
     }
 
+    fn work_directory(&self) -> Option<path::PathBuf> {
+        if let Some(work_directory) = self.get_string("work_directory") {
+            return Some(path::PathBuf::from(work_directory));
+        }
+        None
+    }
+
     fn redirect_stderr(&self) -> Option<path::PathBuf> {
         if let Some(redirect_stderr) = self.get_string("redirect_stderr") {
             return Some(path::PathBuf::from(redirect_stderr));

@@ -20,6 +20,7 @@ pub trait Task: Runnable {
 
 pub trait ShellTask: Task {
     fn command(&self) -> String;
+    fn work_directory(&self) -> Option<path::PathBuf>;
     fn redirect_stdout(&self) -> Option<path::PathBuf>;
     fn redirect_stderr(&self) -> Option<path::PathBuf>;
     fn supress_stdout(&self) -> bool;
@@ -61,14 +62,20 @@ impl<T: ShellTask> Runnable for T {
 
         let start_time = time::PreciseTime::now();
 
-        let mut child = process::Command::new(args[0])
-            .args(&args[1..])
-            .stdin(process::Stdio::inherit())
-            .stdout(process::Stdio::piped())
-            .stderr(process::Stdio::piped())
-            .spawn()
-            .unwrap_or_else(|e| panic!("failed to execute: {}", e));
+        let mut child = {
+            let mut child = process::Command::new(args[0]);
 
+            child.args(&args[1..])
+                .stdin(process::Stdio::inherit())
+                .stdout(process::Stdio::piped())
+                .stderr(process::Stdio::piped());
+
+            if let Some(path) = self.work_directory() {
+                child.current_dir(path);
+            }
+            child.spawn()
+                .unwrap_or_else(|e| panic!("failed to execute: {}", e))
+        };
 
         {
             let stdout = BufReader::new(child.stdout.as_mut().unwrap());
@@ -107,25 +114,5 @@ impl<T: ShellTask> Runnable for T {
         write!(terminal, "({})", TimeFormat(duration)).unwrap();
 
         writeln!(terminal, "").unwrap();
-
-        // if let Some(redirect_stdout) = redirect_stdout {
-        // let mut s = String::new();
-        // child.stdout
-        // .unwrap()
-        // .read_to_string(&mut s)
-        // .unwrap();
-        // let mut file = File::create(redirect_stdout).unwrap();
-        // file.write_all(&s.into_bytes()).unwrap();
-        // }
-
-        // if let Some(redirect_stderr) = redirect_stderr {
-        // let mut s = String::new();
-        // child.stderr
-        // .unwrap()
-        // .read_to_string(&mut s)
-        // .unwrap();
-        // let mut file = File::create(redirect_stderr).unwrap();
-        // file.write_all(&s.into_bytes()).unwrap();
-        // }
     }
 }

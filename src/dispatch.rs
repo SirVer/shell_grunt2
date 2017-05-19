@@ -29,44 +29,40 @@ impl<'a> ShellGrunt2<'a> {
     }
 
     pub fn spin(&mut self) {
-        self.check_for_new_work();
+        while let Ok(ev) = self.events_rx.try_recv() {
+            use notify::DebouncedEvent::*;
 
-        let ev = match self.events_rx.try_recv() {
-            Ok(ev) => ev,
-            Err(_) => return,
-        };
+            let path = match ev {
+                NoticeWrite(path) |
+                    NoticeRemove(path) |
+                    Create(path) |
+                    Write(path) |
+                    Remove(path) => path,
 
-        use notify::DebouncedEvent::*;
+                    Rename(_, new_path) => new_path,
 
-        let path = match ev {
-            NoticeWrite(path) |
-            NoticeRemove(path) |
-            Create(path) |
-            Write(path) |
-            Remove(path) => path,
+                    Error(err, path) => {
+                        println!("Ignored error: {:?}, ({:?})", err, path);
+                        continue;
+                    }
+                Rescan | Chmod(_) => continue,
+            };
+            for task in self.tasks {
+                if !task.should_run(&path) {
+                    continue;
+                }
 
-            Rename(_, new_path) => new_path,
-
-            Error(err, path) => {
-                println!("Ignored error: {:?}, ({:?})", err, path);
-                return;
+                let entry = self.work_items.entry(task.name()).or_insert(Item {
+                    last_seen:
+                        time::PreciseTime::now(),
+                        task: &task,
+                });
+                entry.last_seen = time::PreciseTime::now();
+                entry.task = &task;
             }
-            Rescan | Chmod(_) => return,
-        };
-
-        for task in self.tasks {
-            if !task.should_run(&path) {
-                continue;
-            }
-
-            let entry = self.work_items.entry(task.name()).or_insert(Item {
-                last_seen:
-                    time::PreciseTime::now(),
-                    task: &task,
-            });
-            entry.last_seen = time::PreciseTime::now();
-            entry.task = &task;
         }
+
+        self.check_for_new_work();
     }
 
     fn check_for_new_work(&mut self) {

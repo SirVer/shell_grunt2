@@ -37,8 +37,9 @@ fn handle_output<R: BufRead, W: Write>(reader: R, echo: bool, mut redirect: Opti
         // TODO(sirver): My understanding is that \x1b[ should start every ANSI sequence, but I
         // also see \x1b( in my outputs - so I filtered that too. Figure out a more principled way
         // of removing color.
+        // for now this is lifted from chalk/ansi-regex.
         lazy_static! {
-            static ref RE: Regex = Regex::new("\u{1b}[\\[(][0-9;]*[a-zA-Z]").unwrap();
+            static ref RE: Regex = Regex::new("[\u{1b}\u{9b}][\\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PRZcf-nqry=><]").unwrap();
         }
         redirect.as_mut().map(|w| writeln!(w, "{}", RE.replace_all(&line, "")).unwrap());
         if echo {

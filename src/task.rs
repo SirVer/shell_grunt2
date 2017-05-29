@@ -39,9 +39,12 @@ fn handle_output<R: BufRead, W: Write>(reader: R, echo: bool, mut redirect: Opti
         // of removing color.
         // for now this is lifted from chalk/ansi-regex.
         lazy_static! {
-            static ref RE: Regex = Regex::new("[\u{1b}\u{9b}][\\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PRZcf-nqry=><]").unwrap();
+            static ref REMOVE_ANSI: Regex = Regex::new("[\u{1b}\u{9b}][\\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PRZcf-nqry=><]").unwrap();
+            static ref REMOVE_SHIFT_INOUT: Regex = Regex::new("[\u{0e}\u{0f}]").unwrap();
         }
-        redirect.as_mut().map(|w| writeln!(w, "{}", RE.replace_all(&line, "")).unwrap());
+        let no_color = REMOVE_ANSI.replace_all(&line, "");
+        let no_shift = REMOVE_SHIFT_INOUT.replace_all(&no_color, "");
+        redirect.as_mut().map(|w| writeln!(w, "{}", no_shift).unwrap());
         if echo {
             println!("{}", line);
         }

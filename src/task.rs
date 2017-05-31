@@ -1,15 +1,21 @@
-use crossbeam;
 use floating_duration::TimeFormat;
 use regex::Regex;
 use std::fs::File;
 use std::io::{Write, BufReader, BufRead, BufWriter};
 use std::path;
+use std::thread;
 use std::process;
 use term;
 use time;
 
+pub trait RunningTask {
+    fn done(&mut self) -> bool;
+    fn wait(self: Box<Self>);
+    fn interrupt(self: Box<Self>);
+}
+
 pub trait Runnable {
-    fn run(&self);
+    fn run(&self) -> Box<RunningTask>;
 }
 
 pub trait Task: Runnable {
@@ -49,18 +55,30 @@ fn handle_output<R: BufRead, W: Write>(reader: R, echo: bool, mut redirect: Opti
             println!("{}", line);
         }
     }
-
 }
 
-impl<T: ShellTask> Runnable for T {
-    /// Dispatches to 'program' with 'str'.
-    fn run(&self) {
-        let command = self.command();
+struct RunningShellTask {
+    child: process::Child,
+    start_time: time::PreciseTime,
+    done: bool,
+    name: String,
+    io_threads: Vec<thread::JoinHandle<()>>,
+}
+
+impl RunningShellTask {
+    pub fn spawn(command: &str,
+                 name: String,
+                 work_directory: Option<path::PathBuf>,
+                 echo_stdout: bool,
+                 redirect_stdout: Option<path::PathBuf>,
+                 echo_stderr: bool,
+                 redirect_stderr: Option<path::PathBuf>)
+                 -> Self {
         let args = command.split_whitespace().collect::<Vec<&str>>();
         let mut terminal = term::stdout().unwrap();
         terminal.fg(term::color::CYAN).unwrap();
         write!(terminal, "\x1b[2J").unwrap(); // Clear the screen.
-        writeln!(terminal, "==> {}", self.name()).unwrap();
+        writeln!(terminal, "==> {}", name).unwrap();
         terminal.reset().unwrap();
         terminal.flush().unwrap();
 
@@ -74,38 +92,45 @@ impl<T: ShellTask> Runnable for T {
                 .stdout(process::Stdio::piped())
                 .stderr(process::Stdio::piped());
 
-            if let Some(path) = self.work_directory() {
+            if let Some(path) = work_directory {
                 child.current_dir(path);
             }
-            child.spawn()
-                .unwrap_or_else(|e| panic!("failed to execute: {}", e))
+            child.spawn().unwrap_or_else(|e| panic!("failed to execute: {}", e))
         };
 
-        {
-            let stdout = BufReader::new(child.stdout.as_mut().unwrap());
-            let echo_stdout = !self.supress_stdout();
-            let redirect_stdout =
-                self.redirect_stdout().map(|path| BufWriter::new(File::create(path).unwrap()));
-            let stderr = BufReader::new(child.stderr.as_mut().unwrap());
-            let echo_stderr = !self.supress_stderr();
-            let redirect_stderr =
-                self.redirect_stderr().map(|path| BufWriter::new(File::create(path).unwrap()));
+        let mut io_threads = Vec::new();
+        let stdout = BufReader::new(child.stdout.take().unwrap());
+        let redirect_stdout =
+            redirect_stdout.map(|path| BufWriter::new(File::create(path).unwrap()));
+        io_threads.push(thread::spawn(move || {
+            handle_output(stdout, echo_stdout, redirect_stdout);
+        }));
+        let stderr = BufReader::new(child.stderr.take().unwrap());
+        let redirect_stderr =
+            redirect_stderr.map(|path| BufWriter::new(File::create(path).unwrap()));
+        io_threads.push(thread::spawn(move || {
+            handle_output(stderr, echo_stderr, redirect_stderr);
+        }));
 
-            crossbeam::scope(|scope| {
-                scope.spawn(move || { handle_output(stdout, echo_stdout, redirect_stdout); });
-                scope.spawn(move || { handle_output(stderr, echo_stderr, redirect_stderr); });
-            });
+        RunningShellTask {
+            start_time,
+            name,
+            child,
+            done: false,
+            io_threads: io_threads,
         }
+    }
 
-        let success = match child.wait().unwrap().code() {
-            Some(code) => code == 0,
-            None => false,
-        };
+    fn finish(&mut self, success: bool) {
+        self.done = true;
 
-        let duration = start_time.to(time::PreciseTime::now()).to_std().unwrap();
-
+        let duration = self.start_time
+            .to(time::PreciseTime::now())
+            .to_std()
+            .unwrap();
+        let mut terminal = term::stdout().unwrap();
         terminal.fg(term::color::CYAN).unwrap();
-        write!(terminal, "==> {}: ", self.name()).unwrap();
+        write!(terminal, "==> {}: ", self.name).unwrap();
         terminal.reset().unwrap();
         if success {
             terminal.fg(term::color::GREEN).unwrap();
@@ -116,7 +141,56 @@ impl<T: ShellTask> Runnable for T {
         }
         terminal.reset().unwrap();
         write!(terminal, "({})", TimeFormat(duration)).unwrap();
-
         writeln!(terminal, "").unwrap();
+    }
+}
+
+impl Drop for RunningShellTask {
+    fn drop(&mut self) {
+        for handle in self.io_threads.drain(..) {
+            handle.join().unwrap();
+        }
+    }
+}
+
+impl RunningTask for RunningShellTask {
+    fn done(&mut self) -> bool {
+        if self.done {
+            return true;
+        }
+
+        let success = match self.child.try_wait().expect("try_wait") {
+            Some(status) => status.success(),
+            None => return false,
+        };
+        self.finish(success);
+        true
+    }
+
+    fn wait(mut self: Box<Self>) {
+        if self.done {
+            return;
+        }
+        self.child.wait().expect("wait");
+    }
+
+    fn interrupt(mut self: Box<Self>) {
+        if self.done {
+            return;
+        }
+        self.child.kill().unwrap()
+    }
+}
+
+impl<T: ShellTask> Runnable for T {
+    /// Dispatches to 'program' with 'str'.
+    fn run(&self) -> Box<RunningTask> {
+        Box::new(RunningShellTask::spawn(&self.command(),
+                                         self.name(),
+                                         self.work_directory(),
+                                         !self.supress_stdout(),
+                                         self.redirect_stdout(),
+                                         !self.supress_stderr(),
+                                         self.redirect_stderr()))
     }
 }

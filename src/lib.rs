@@ -1,4 +1,5 @@
-extern crate crossbeam;
+#![feature(process_try_wait)]
+
 extern crate floating_duration;
 extern crate notify;
 extern crate regex;

@@ -3,11 +3,12 @@ use time;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc;
-use super::task::Task;
+use task::{Task, RunningTask};
 
 struct Item<'a> {
-    last_seen: time::PreciseTime,
+    last_run_requested: Option<time::PreciseTime>,
     task: &'a Box<Task>,
+    running_task: Option<Box<RunningTask>>,
 }
 
 pub struct ShellGrunt2<'a> {
@@ -34,17 +35,17 @@ impl<'a> ShellGrunt2<'a> {
 
             let path = match ev {
                 NoticeWrite(path) |
-                    NoticeRemove(path) |
-                    Create(path) |
-                    Write(path) |
-                    Remove(path) => path,
+                NoticeRemove(path) |
+                Create(path) |
+                Write(path) |
+                Remove(path) => path,
 
-                    Rename(_, new_path) => new_path,
+                Rename(_, new_path) => new_path,
 
-                    Error(err, path) => {
-                        println!("Ignored error: {:?}, ({:?})", err, path);
-                        continue;
-                    }
+                Error(err, path) => {
+                    println!("Ignored error: {:?}, ({:?})", err, path);
+                    continue;
+                }
                 Rescan | Chmod(_) => continue,
             };
             for task in self.tasks {
@@ -53,11 +54,12 @@ impl<'a> ShellGrunt2<'a> {
                 }
 
                 let entry = self.work_items.entry(task.name()).or_insert(Item {
-                    last_seen:
-                        time::PreciseTime::now(),
-                        task: &task,
-                });
-                entry.last_seen = time::PreciseTime::now();
+                                                                             last_run_requested:
+                                                                                 None,
+                                                                             task: &task,
+                                                                             running_task: None,
+                                                                         });
+                entry.last_run_requested = Some(time::PreciseTime::now());
                 entry.task = &task;
             }
         }
@@ -69,10 +71,21 @@ impl<'a> ShellGrunt2<'a> {
         let mut done = HashSet::new();
 
         let now = time::PreciseTime::now();
-        for (entry_name, entry) in &self.work_items {
-            if entry.last_seen.to(now) > entry.task.start_delay() {
-                entry.task.run();
-                done.insert(entry_name.to_string());
+        for (entry_name, entry) in &mut self.work_items {
+            if entry.last_run_requested.is_some() &&
+               entry.last_run_requested.unwrap().to(now) > entry.task.start_delay() {
+                entry.running_task.take().map(|r| r.interrupt());
+                entry.running_task = Some(entry.task.run());
+                entry.last_run_requested = None;
+                continue;
+            }
+
+            if entry.running_task.is_some() &&
+               entry.running_task
+                   .as_mut()
+                   .unwrap()
+                   .done() {
+                done.insert(entry_name.clone());
             }
         }
 

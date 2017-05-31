@@ -101,13 +101,13 @@ impl RunningShellTask {
         let mut io_threads = Vec::new();
         let stdout = BufReader::new(child.stdout.take().unwrap());
         let redirect_stdout =
-            redirect_stdout.map(|path| BufWriter::new(File::create(path).unwrap()));
+            redirect_stdout.map(|path| BufWriter::with_capacity(4096, File::create(path).unwrap()));
         io_threads.push(thread::spawn(move || {
             handle_output(stdout, echo_stdout, redirect_stdout);
         }));
         let stderr = BufReader::new(child.stderr.take().unwrap());
         let redirect_stderr =
-            redirect_stderr.map(|path| BufWriter::new(File::create(path).unwrap()));
+            redirect_stderr.map(|path| BufWriter::with_capacity(4096, File::create(path).unwrap()));
         io_threads.push(thread::spawn(move || {
             handle_output(stderr, echo_stderr, redirect_stderr);
         }));

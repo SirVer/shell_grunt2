@@ -149,7 +149,7 @@ impl RunningShellTask {
         let redirect_stdout =
             self.redirect_stdout
                 .as_ref()
-                .map(|path| BufWriter::with_capacity(4096, creation_func(path).unwrap()));
+                .map(|path| BufWriter::with_capacity(512, creation_func(path).unwrap()));
         io_threads
             .push(thread::spawn(move || { handle_output(stdout, echo_stdout, redirect_stdout); }));
         let stderr = BufReader::new(child.stderr.take().unwrap());
@@ -157,7 +157,7 @@ impl RunningShellTask {
         let redirect_stderr =
             self.redirect_stderr
                 .as_ref()
-                .map(|path| BufWriter::with_capacity(4096, creation_func(path).unwrap()));
+                .map(|path| BufWriter::with_capacity(512, creation_func(path).unwrap()));
         io_threads
             .push(thread::spawn(move || { handle_output(stderr, echo_stderr, redirect_stderr); }));
         self.running_child = Some(RunningChildState {

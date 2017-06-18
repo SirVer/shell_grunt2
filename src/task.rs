@@ -1,6 +1,6 @@
 use floating_duration::TimeFormat;
 use regex::Regex;
-use std::fs::File;
+use std::fs::OpenOptions;
 use std::io::{Write, BufReader, BufRead, BufWriter};
 use std::path;
 use std::thread;
@@ -19,14 +19,22 @@ pub trait Runnable {
 }
 
 pub trait Task: Runnable {
+    // TODO(sirver): This is now really only used to identify the (set of) tasks to run.
+    // Remove this and replace through some sort of hash.
     fn name(&self) -> String;
     fn should_run(&self, _: &path::Path) -> bool;
     fn start_delay(&self) -> time::Duration;
 }
 
+pub struct ShellCommand {
+    pub name: String,
+    pub command: String,
+    pub work_directory: Option<path::PathBuf>,
+}
+
 pub trait ShellTask: Task {
-    fn command(&self) -> String;
-    fn work_directory(&self) -> Option<path::PathBuf>;
+    // Will run the first command, on success the second..
+    fn commands(&self) -> Vec<ShellCommand>;
     fn redirect_stdout(&self) -> Option<path::PathBuf>;
     fn redirect_stderr(&self) -> Option<path::PathBuf>;
     fn supress_stdout(&self) -> bool;
@@ -50,87 +58,130 @@ fn handle_output<R: BufRead, W: Write>(reader: R, echo: bool, mut redirect: Opti
         }
         let no_color = REMOVE_ANSI.replace_all(&line, "");
         let no_shift = REMOVE_SHIFT_INOUT.replace_all(&no_color, "");
-        redirect.as_mut().map(|w| writeln!(w, "{}", no_shift).unwrap());
+        redirect
+            .as_mut()
+            .map(|w| writeln!(w, "{}", no_shift).unwrap());
         if echo {
             println!("{}", line);
         }
     }
 }
 
-struct RunningShellTask {
+struct RunningChildState {
+    name: String,
     child: process::Child,
     start_time: time::PreciseTime,
-    done: bool,
-    name: String,
     io_threads: Vec<thread::JoinHandle<()>>,
 }
 
+struct RunningShellTask {
+    commands: Vec<ShellCommand>,
+    echo_stdout: bool,
+    redirect_stdout: Option<path::PathBuf>,
+    echo_stderr: bool,
+    redirect_stderr: Option<path::PathBuf>,
+    running_child: Option<RunningChildState>,
+}
+
 impl RunningShellTask {
-    pub fn spawn(command: &str,
-                 name: String,
-                 work_directory: Option<path::PathBuf>,
+    pub fn spawn(commands: Vec<ShellCommand>,
                  echo_stdout: bool,
                  redirect_stdout: Option<path::PathBuf>,
                  echo_stderr: bool,
                  redirect_stderr: Option<path::PathBuf>)
                  -> Self {
-        let args = command.split_whitespace().collect::<Vec<&str>>();
+        let mut this = RunningShellTask {
+            commands: commands,
+            echo_stdout,
+            redirect_stdout,
+            echo_stderr,
+            redirect_stderr,
+            running_child: None,
+        };
+
+        {
+            let mut terminal = term::stdout().unwrap();
+            write!(terminal, "\x1b[2J").unwrap(); // Clear the screen.
+        }
+        this.run_next_command(true);
+        this
+    }
+
+    fn run_next_command(&mut self, is_first: bool) {
+        assert!(self.running_child.is_none());
+        if self.commands.is_empty() {
+            return;
+        }
+        let command = self.commands.remove(0);
+
+        let args = command.command.split_whitespace().collect::<Vec<&str>>();
         let mut terminal = term::stdout().unwrap();
         terminal.fg(term::color::CYAN).unwrap();
-        write!(terminal, "\x1b[2J").unwrap(); // Clear the screen.
-        writeln!(terminal, "==> {}", name).unwrap();
+        writeln!(terminal, "==> {}", command.name).unwrap();
         terminal.reset().unwrap();
         terminal.flush().unwrap();
 
         let start_time = time::PreciseTime::now();
-
         let mut child = {
             let mut child = process::Command::new(args[0]);
-
-            child.args(&args[1..])
+            child
+                .args(&args[1..])
                 .stdin(process::Stdio::inherit())
                 .stdout(process::Stdio::piped())
                 .stderr(process::Stdio::piped());
-
-            if let Some(path) = work_directory {
+            if let Some(path) = command.work_directory {
                 child.current_dir(path);
             }
-            child.spawn().unwrap_or_else(|e| panic!("failed to execute: {}", e))
+            child
+                .spawn()
+                .unwrap_or_else(|e| panic!("failed to execute: {}", e))
         };
 
         let mut io_threads = Vec::new();
-        let stdout = BufReader::new(child.stdout.take().unwrap());
-        let redirect_stdout =
-            redirect_stdout.map(|path| BufWriter::with_capacity(4096, File::create(path).unwrap()));
-        io_threads.push(thread::spawn(move || {
-            handle_output(stdout, echo_stdout, redirect_stdout);
-        }));
-        let stderr = BufReader::new(child.stderr.take().unwrap());
-        let redirect_stderr =
-            redirect_stderr.map(|path| BufWriter::with_capacity(4096, File::create(path).unwrap()));
-        io_threads.push(thread::spawn(move || {
-            handle_output(stderr, echo_stderr, redirect_stderr);
-        }));
+        let creation_func = |p| {
+            OpenOptions::new()
+                .write(true)
+                .append(!is_first)
+                .create(is_first)
+                .open(p)
+        };
 
-        RunningShellTask {
-            start_time,
-            name,
-            child,
-            done: false,
-            io_threads: io_threads,
-        }
+        let stdout = BufReader::new(child.stdout.take().unwrap());
+        let echo_stdout = self.echo_stdout;
+        let redirect_stdout =
+            self.redirect_stdout
+                .as_ref()
+                .map(|path| BufWriter::with_capacity(4096, creation_func(path).unwrap()));
+        io_threads
+            .push(thread::spawn(move || { handle_output(stdout, echo_stdout, redirect_stdout); }));
+        let stderr = BufReader::new(child.stderr.take().unwrap());
+        let echo_stderr = self.echo_stderr;
+        let redirect_stderr =
+            self.redirect_stderr
+                .as_ref()
+                .map(|path| BufWriter::with_capacity(4096, creation_func(path).unwrap()));
+        io_threads
+            .push(thread::spawn(move || { handle_output(stderr, echo_stderr, redirect_stderr); }));
+        self.running_child = Some(RunningChildState {
+                                      name: command.name,
+                                      io_threads,
+                                      child,
+                                      start_time,
+                                  });
     }
 
-    fn finish(&mut self, success: bool) {
-        self.done = true;
+    fn current_command_finished(&mut self, success: bool) {
+        assert!(self.running_child.is_some());
+        let running_child = self.running_child.take().unwrap();
 
-        let duration = self.start_time
+        let duration = running_child
+            .start_time
             .to(time::PreciseTime::now())
             .to_std()
             .unwrap();
         let mut terminal = term::stdout().unwrap();
         terminal.fg(term::color::CYAN).unwrap();
-        write!(terminal, "==> {}: ", self.name).unwrap();
+        write!(terminal, "==> {}: ", running_child.name).unwrap();
         terminal.reset().unwrap();
         if success {
             terminal.fg(term::color::GREEN).unwrap();
@@ -142,52 +193,65 @@ impl RunningShellTask {
         terminal.reset().unwrap();
         write!(terminal, "({})", TimeFormat(duration)).unwrap();
         writeln!(terminal, "").unwrap();
+        if success {
+            self.run_next_command(false);
+        }
     }
 }
 
 impl Drop for RunningShellTask {
     fn drop(&mut self) {
-        for handle in self.io_threads.drain(..) {
-            handle.join().unwrap();
+        if let Some(mut running_child) = self.running_child.take() {
+            for handle in running_child.io_threads.drain(..) {
+                handle.join().unwrap();
+            }
         }
     }
 }
 
 impl RunningTask for RunningShellTask {
     fn done(&mut self) -> bool {
-        if self.done {
+        if self.running_child.is_none() {
             return true;
         }
 
-        let success = match self.child.try_wait().expect("try_wait") {
+        let success = match self.running_child
+                  .as_mut()
+                  .unwrap()
+                  .child
+                  .try_wait()
+                  .expect("try_wait") {
             Some(status) => status.success(),
             None => return false,
         };
-        self.finish(success);
-        true
+        self.current_command_finished(success);
+        self.done()
     }
 
     fn wait(mut self: Box<Self>) {
-        if self.done {
+        if self.done() {
             return;
         }
-        self.child.wait().expect("wait");
+        self.running_child
+            .take()
+            .map(|mut r| r.child.wait().expect("wait"));
+        self.wait()
     }
 
     fn interrupt(mut self: Box<Self>) {
-        if self.done {
+        if self.done() {
             return;
         }
-        self.child.kill().unwrap()
+        self.running_child
+            .take()
+            .map(|mut r| r.child.kill().expect("kill"));
     }
 }
 
 impl<T: ShellTask> Runnable for T {
     /// Dispatches to 'program' with 'str'.
     fn run(&self) -> Box<RunningTask> {
-        Box::new(RunningShellTask::spawn(&self.command(),
-                                         self.name(),
-                                         self.work_directory(),
+        Box::new(RunningShellTask::spawn(self.commands(),
                                          !self.supress_stdout(),
                                          self.redirect_stdout(),
                                          !self.supress_stderr(),

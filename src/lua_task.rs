@@ -6,8 +6,47 @@ use self::lua::ffi::lua_State;
 use std::path;
 use std::rc::Rc;
 use std::cell::RefCell;
-use task::{Task, ShellTask};
+use task::{Task, ShellTask, ShellCommand};
 
+// TODO(sirver): This whole file is quite the hack. If a LuaDictionary would get a proper
+// abstraction, this could be expressed more tightly. This is a bit tricky with the correct
+// lifetimes.
+
+fn get_value_in_dict(key: &str, state: &mut lua::State) {
+    // S: D
+    state.push_string(key); // S: D <key>
+    state.get_table(-2); // S: D <value>
+}
+
+fn pop_string(state: &mut lua::State) -> Option<String> {
+    let rv = if state.is_string(-1) {
+        Some(state.check_string(-1).to_string())
+    } else {
+        None
+    };
+    state.pop(1);
+    rv
+}
+
+fn pop_int(state: &mut lua::State) -> Option<i64> {
+    let rv = if state.is_integer(-1) {
+        Some(state.check_integer(-1))
+    } else {
+        None
+    };
+    state.pop(1);
+    rv
+}
+
+fn pop_bool(state: &mut lua::State) -> Option<bool> {
+    let rv = if state.is_bool(-1) {
+        Some(state.to_bool(-1))
+    } else {
+        None
+    };
+    state.pop(1);
+    rv
+}
 
 struct LuaTask {
     state: Rc<RefCell<lua::State>>,
@@ -22,7 +61,7 @@ impl LuaTask {
         }
     }
 
-    fn push_value(&self, key: &str, state: &mut lua::State) {
+    fn get_value_in_our_dict(&self, key: &str, state: &mut lua::State) {
         // S: D
         state.push_integer(self.key); // S: D key
         state.get_table(1); // S: D d
@@ -32,37 +71,25 @@ impl LuaTask {
 
     fn get_string(&self, key: &str) -> Option<String> {
         let mut state = self.state.borrow_mut();
-        self.push_value(key, &mut state); // S: D d <value>
-        let rv = if state.is_string(-1) {
-            Some(state.check_string(-1).to_string())
-        } else {
-            None
-        };
-        state.pop(2);
+        self.get_value_in_our_dict(key, &mut state); // S: D d <value>
+        let rv = pop_string(&mut state);
+        state.pop(1);
         rv
     }
 
     fn get_int(&self, key: &str) -> Option<i64> {
         let mut state = self.state.borrow_mut();
-        self.push_value(key, &mut state); // S: D d <value>
-        let rv = if state.is_integer(-1) {
-            Some(state.check_integer(-1))
-        } else {
-            None
-        };
-        state.pop(2);
+        self.get_value_in_our_dict(key, &mut state); // S: D d <value>
+        let rv = pop_int(&mut state);
+        state.pop(1);
         rv
     }
 
     fn get_bool(&self, key: &str) -> Option<bool> {
         let mut state = self.state.borrow_mut();
-        self.push_value(key, &mut state); // S: D d <value>
-        let rv = if state.is_bool(-1) {
-            Some(state.to_bool(-1))
-        } else {
-            None
-        };
-        state.pop(2);
+        self.get_value_in_our_dict(key, &mut state); // S: D d <value>
+        let rv = pop_bool(&mut state);
+        state.pop(1);
         rv
     }
 }
@@ -74,7 +101,7 @@ impl Task for LuaTask {
 
     fn should_run(&self, path: &path::Path) -> bool {
         let mut state = self.state.borrow_mut();
-        self.push_value("should_run", &mut state);
+        self.get_value_in_our_dict("should_run", &mut state);
         if state.is_nil(-1) {
             // should_run not in dictionary.
             state.pop(2);
@@ -96,8 +123,29 @@ impl Task for LuaTask {
 }
 
 impl ShellTask for LuaTask {
-    fn command(&self) -> String {
-        self.get_string("command").unwrap()
+    // TODO(sirver): If there is only one command in a chain, a short form should be acceptable in
+    // the Lua file.
+    fn commands(&self) -> Vec<ShellCommand> {
+        let mut state = self.state.borrow_mut();
+        self.get_value_in_our_dict("commands", &mut state);
+        if state.is_nil(-1) {
+            panic!("Expected commands, but was not found.");
+        }
+        let mut result = Vec::new();
+        state.push_nil(); // S: D "commands dict" nil
+        while state.next(-2) {
+            // S: D "commands dict" key value
+            get_value_in_dict("name", &mut state);
+            let name = pop_string(&mut state).expect("name in commands.");
+            get_value_in_dict("command", &mut state);
+            let command = pop_string(&mut state).expect("command in commands.");
+            get_value_in_dict("work_directory", &mut state);
+            let work_directory = pop_string(&mut state).map(path::PathBuf::from);
+            state.pop(1); // S: D "commands dict" key
+            result.push(ShellCommand { name, command, work_directory });
+        }
+        state.pop(1); // S: D
+        result
     }
 
     fn redirect_stdout(&self) -> Option<path::PathBuf> {
@@ -107,12 +155,6 @@ impl ShellTask for LuaTask {
         None
     }
 
-    fn work_directory(&self) -> Option<path::PathBuf> {
-        if let Some(work_directory) = self.get_string("work_directory") {
-            return Some(path::PathBuf::from(work_directory));
-        }
-        None
-    }
 
     fn redirect_stderr(&self) -> Option<path::PathBuf> {
         if let Some(redirect_stderr) = self.get_string("redirect_stderr") {
@@ -145,7 +187,7 @@ unsafe extern "C" fn basename(L: *mut lua_State) -> libc::c_int {
         Some(s) => {
             state.push_string(&s.to_string_lossy());
             1
-        },
+        }
         None => 0,
     }
 }
@@ -159,7 +201,7 @@ unsafe extern "C" fn dirname(L: *mut lua_State) -> libc::c_int {
         Some(s) => {
             state.push_string(&s.to_string_lossy());
             1
-        },
+        }
         None => 0,
     }
 }
@@ -173,7 +215,7 @@ unsafe extern "C" fn ext(L: *mut lua_State) -> libc::c_int {
         Some(ext) => {
             state.push_string(&ext.to_string_lossy());
             1
-        },
+        }
         None => 0,
     }
 }
@@ -198,27 +240,26 @@ fn inject_path_functions(state: &mut lua::State) {
 
 // TODO(sirver): error handling
 pub fn run_file(path: &path::Path) -> Vec<Box<Task>> {
-  let mut state = lua::State::new();
-  state.open_libs();
+    let mut state = lua::State::new();
+    state.open_libs();
 
-  let rv = state.do_file(&path.to_string_lossy());
-  if rv != lua::ThreadStatus::Ok {
-      panic!("Error: {:?}", rv);
-  }
+    let rv = state.do_file(&path.to_string_lossy());
+    if rv != lua::ThreadStatus::Ok {
+        panic!("Error: {:?}", rv);
+    }
 
-  inject_path_functions(&mut state);
+    inject_path_functions(&mut state);
 
-  let mut tasks = Vec::new();
-  let state_rc = Rc::new(RefCell::new(state));
-  let mut state = state_rc.borrow_mut();
+    let mut tasks = Vec::new();
+    let state_rc = Rc::new(RefCell::new(state));
+    let mut state = state_rc.borrow_mut();
 
-  state.push_nil(); // S: D nil
-  while state.next(-2) {
-      let key = state.check_integer(-2); // S: D key value
-      state.pop(1); // S: D key
-      tasks.push(
-          Box::new(LuaTask::new(state_rc.clone(), key)) as Box<Task>);
-  }
-  // S: D
-  tasks
+    state.push_nil(); // S: D nil
+    while state.next(-2) {
+        let key = state.check_integer(-2); // S: D key value
+        state.pop(1); // S: D key
+        tasks.push(Box::new(LuaTask::new(state_rc.clone(), key)) as Box<Task>);
+    }
+    // S: D
+    tasks
 }

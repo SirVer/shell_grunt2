@@ -86,6 +86,6 @@ fn main() {
 
     loop {
         println!("Watching file system with tasks from {}", watcher_file);
-        watch_file_events(&watcher_file);
+        watch_file_events(watcher_file);
     }
 }

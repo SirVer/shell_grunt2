@@ -4,10 +4,11 @@ use time;
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc;
 use task::{Task, RunningTask};
+use std::borrow::Borrow;
 
 struct Item<'a> {
     last_run_requested: Option<time::PreciseTime>,
-    task: &'a Box<Task>,
+    task: &'a Task,
     running_task: Option<Box<RunningTask>>,
 }
 
@@ -56,11 +57,11 @@ impl<'a> ShellGrunt2<'a> {
                 let entry = self.work_items.entry(task.name()).or_insert(Item {
                                                                              last_run_requested:
                                                                                  None,
-                                                                             task: &task,
+                                                                             task: task.borrow(),
                                                                              running_task: None,
                                                                          });
                 entry.last_run_requested = Some(time::PreciseTime::now());
-                entry.task = &task;
+                entry.task = task.borrow();
             }
         }
 

@@ -3,8 +3,8 @@ use time;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc;
-use task::{Task, RunningTask};
 use std::borrow::Borrow;
+use task::{Task, RunningTask};
 
 struct Item<'a> {
     last_run_requested: Option<time::PreciseTime>,
@@ -15,7 +15,8 @@ struct Item<'a> {
 pub struct ShellGrunt2<'a> {
     tasks: &'a [Box<Task>],
     events_rx: mpsc::Receiver<notify::DebouncedEvent>,
-    work_items: HashMap<String, Item<'a>>,
+    // Maps from index into 'tasks' to the current item.
+    work_items: HashMap<usize, Item<'a>>,
 }
 
 impl<'a> ShellGrunt2<'a> {
@@ -49,12 +50,12 @@ impl<'a> ShellGrunt2<'a> {
                 }
                 Rescan | Chmod(_) => continue,
             };
-            for task in self.tasks {
+            for (task_idx, task) in self.tasks.iter().enumerate() {
                 if !task.should_run(&path) {
                     continue;
                 }
 
-                let entry = self.work_items.entry(task.name()).or_insert(Item {
+                let entry = self.work_items.entry(task_idx).or_insert(Item {
                                                                              last_run_requested:
                                                                                  None,
                                                                              task: task.borrow(),
@@ -72,7 +73,7 @@ impl<'a> ShellGrunt2<'a> {
         let mut done = HashSet::new();
 
         let now = time::PreciseTime::now();
-        for (entry_name, entry) in &mut self.work_items {
+        for (task_idx, entry) in &mut self.work_items {
             if entry.last_run_requested.is_some() &&
                entry.last_run_requested.unwrap().to(now) > entry.task.start_delay() {
                 entry.running_task.take().map(|r| r.interrupt());
@@ -86,7 +87,7 @@ impl<'a> ShellGrunt2<'a> {
                    .as_mut()
                    .unwrap()
                    .done() {
-                done.insert(entry_name.clone());
+                done.insert(task_idx.clone());
             }
         }
 

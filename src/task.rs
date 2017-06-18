@@ -19,9 +19,6 @@ pub trait Runnable {
 }
 
 pub trait Task: Runnable {
-    // TODO(sirver): This is now really only used to identify the (set of) tasks to run.
-    // Remove this and replace through some sort of hash.
-    fn name(&self) -> String;
     fn should_run(&self, _: &path::Path) -> bool;
     fn start_delay(&self) -> time::Duration;
 }
@@ -141,8 +138,9 @@ impl RunningShellTask {
         let creation_func = |p| {
             OpenOptions::new()
                 .write(true)
-                .append(!is_first)
                 .create(is_first)
+                .truncate(is_first)
+                .append(!is_first)
                 .open(p)
         };
 

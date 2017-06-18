@@ -33,10 +33,6 @@ impl Runnable for ReloadWatcherFile {
 }
 
 impl Task for ReloadWatcherFile {
-    fn name(&self) -> String {
-        format!("Reloading {}", self.file_name)
-    }
-
     fn should_run(&self, path: &path::Path) -> bool {
         if let Some(file_name) = path.file_name() {
             return file_name.to_string_lossy() == self.file_name;

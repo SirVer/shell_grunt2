@@ -95,10 +95,6 @@ impl LuaTask {
 }
 
 impl Task for LuaTask {
-    fn name(&self) -> String {
-        self.get_string("name").unwrap()
-    }
-
     fn should_run(&self, path: &path::Path) -> bool {
         let mut state = self.state.borrow_mut();
         self.get_value_in_our_dict("should_run", &mut state);

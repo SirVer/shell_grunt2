@@ -239,10 +239,14 @@ pub fn run_file(path: &path::Path) -> Vec<Box<Task>> {
     let mut state = lua::State::new();
     state.open_libs();
 
-    let rv = state.do_file(&path.to_string_lossy());
-    if rv != lua::ThreadStatus::Ok {
-        panic!("Error: {:?}", rv);
-    }
+    let path_utf8 = path.to_string_lossy();
+    match state.do_file(&path_utf8) {
+        lua::ThreadStatus::Ok => (),
+        _ => {
+            let error_message = pop_string(&mut state).unwrap();
+            panic!("{}", error_message);
+        }
+    };
 
     inject_path_functions(&mut state);
 

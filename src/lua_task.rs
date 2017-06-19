@@ -111,10 +111,9 @@ impl Task for LuaTask {
     }
 
     fn start_delay(&self) -> time::Duration {
-        if let Some(delay_ms) = self.get_int("start_delay") {
-            return time::Duration::milliseconds(delay_ms);
-        }
-        time::Duration::milliseconds(50)
+        self.get_int("start_delay")
+            .map(time::Duration::milliseconds)
+            .unwrap_or(time::Duration::milliseconds(50))
     }
 }
 
@@ -138,39 +137,31 @@ impl ShellTask for LuaTask {
             get_value_in_dict("work_directory", &mut state);
             let work_directory = pop_string(&mut state).map(path::PathBuf::from);
             state.pop(1); // S: D "commands dict" key
-            result.push(ShellCommand { name, command, work_directory });
+            result.push(ShellCommand {
+                            name,
+                            command,
+                            work_directory,
+                        });
         }
         state.pop(1); // S: D
         result
     }
 
     fn redirect_stdout(&self) -> Option<path::PathBuf> {
-        if let Some(redirect_stdout) = self.get_string("redirect_stdout") {
-            return Some(path::PathBuf::from(redirect_stdout));
-        }
-        None
+        self.get_string("redirect_stdout").map(path::PathBuf::from)
     }
 
 
     fn redirect_stderr(&self) -> Option<path::PathBuf> {
-        if let Some(redirect_stderr) = self.get_string("redirect_stderr") {
-            return Some(path::PathBuf::from(redirect_stderr));
-        }
-        None
+        self.get_string("redirect_stderr").map(path::PathBuf::from)
     }
 
     fn supress_stderr(&self) -> bool {
-        if let Some(redirect_stderr) = self.get_bool("supress_stderr") {
-            return redirect_stderr;
-        }
-        false
+        self.get_bool("suppress_stderr").unwrap_or(false)
     }
 
     fn supress_stdout(&self) -> bool {
-        if let Some(redirect_stdout) = self.get_bool("supress_stdout") {
-            return redirect_stdout;
-        }
-        false
+        self.get_bool("suppress_stdout").unwrap_or(false)
     }
 }
 

@@ -234,7 +234,6 @@ fn inject_path_functions(state: &mut lua::State) {
     state.pop(1);
 }
 
-// TODO(sirver): error handling
 pub fn run_file(path: &path::Path) -> Vec<Box<Task>> {
     let mut state = lua::State::new();
     state.open_libs();

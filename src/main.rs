@@ -4,7 +4,7 @@ extern crate shell_grunt2;
 extern crate time;
 
 use notify::Watcher;
-use shell_grunt2::task::{Task, Runnable, RunningTask};
+use shell_grunt2::task::{Runnable, RunningTask, Task};
 use shell_grunt2::lockfile;
 use std::time::Duration;
 use std::process;
@@ -58,10 +58,12 @@ fn watch_file_events(watcher_file: &str) {
         .unwrap();
 
     let (should_restart_tx, should_restart_rx) = mpsc::channel();
-    let mut tasks: Vec<Box<Task>> = vec![Box::new(ReloadWatcherFile {
-                                                      file_name: watcher_file.to_string(),
-                                                      should_restart_tx,
-                                                  })];
+    let mut tasks: Vec<Box<Task>> = vec![
+        Box::new(ReloadWatcherFile {
+            file_name: watcher_file.to_string(),
+            should_restart_tx,
+        }),
+    ];
     for task in shell_grunt2::lua_task::run_file(path::Path::new(watcher_file)) {
         tasks.push(task);
     }
@@ -79,18 +81,25 @@ fn watch_file_events(watcher_file: &str) {
 
 fn main() {
     let matches = clap::App::new("shell_grunt2")
-        .about("Watches the file system and executes commands from a Lua file.")
-        .arg(clap::Arg::with_name("file")
-                 .short("f")
-                 .help("Lua file to use [watcher.lua]"))
+        .about(
+            "Watches the file system and executes commands from a Lua file.",
+        )
+        .arg(
+            clap::Arg::with_name("file")
+                .short("f")
+                .help("Lua file to use [watcher.lua]"),
+        )
         .get_matches();
     let watcher_file = matches.value_of("file").unwrap_or("watcher.lua");
 
     let _lockfile = match lockfile::Lockfile::new(watcher_file) {
         Ok(lockfile) => lockfile,
         Err(lockfile::AlreadyExists(path)) => {
-            println!("Another shell grunt is already running for {}. Delete\n\n    {}\n\nif you sure this is untrue. Exiting.",
-                     watcher_file, path.to_string_lossy());
+            println!(
+                "Another shell grunt is already running for {}. Delete\n\n    {}\n\nif you sure this is untrue. Exiting.",
+                watcher_file,
+                path.to_string_lossy()
+            );
             process::exit(1);
         }
     };

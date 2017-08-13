@@ -4,7 +4,7 @@ use time;
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc;
 use std::borrow::Borrow;
-use task::{Task, RunningTask};
+use task::{RunningTask, Task};
 
 struct Item<'a> {
     last_run_requested: Option<time::PreciseTime>,
@@ -20,9 +20,10 @@ pub struct ShellGrunt2<'a> {
 }
 
 impl<'a> ShellGrunt2<'a> {
-    pub fn new(tasks: &'a [Box<Task>],
-               events_rx: mpsc::Receiver<notify::DebouncedEvent>)
-               -> ShellGrunt2<'a> {
+    pub fn new(
+        tasks: &'a [Box<Task>],
+        events_rx: mpsc::Receiver<notify::DebouncedEvent>,
+    ) -> ShellGrunt2<'a> {
 
         ShellGrunt2 {
             tasks: tasks,
@@ -36,11 +37,9 @@ impl<'a> ShellGrunt2<'a> {
             use notify::DebouncedEvent::*;
 
             let path = match ev {
-                NoticeWrite(path) |
-                NoticeRemove(path) |
-                Create(path) |
-                Write(path) |
-                Remove(path) => path,
+                NoticeWrite(path) | NoticeRemove(path) | Create(path) | Write(path) | Remove(path) => {
+                    path
+                }
 
                 Rename(_, new_path) => new_path,
 
@@ -55,13 +54,11 @@ impl<'a> ShellGrunt2<'a> {
                     continue;
                 }
 
-                let entry = self.work_items
-                    .entry(task_idx)
-                    .or_insert(Item {
-                                   last_run_requested: None,
-                                   task: task.borrow(),
-                                   running_task: None,
-                               });
+                let entry = self.work_items.entry(task_idx).or_insert(Item {
+                    last_run_requested: None,
+                    task: task.borrow(),
+                    running_task: None,
+                });
                 entry.last_run_requested = Some(time::PreciseTime::now());
                 entry.task = task.borrow();
             }
@@ -76,7 +73,8 @@ impl<'a> ShellGrunt2<'a> {
         let now = time::PreciseTime::now();
         for (task_idx, entry) in &mut self.work_items {
             if entry.last_run_requested.is_some() &&
-               entry.last_run_requested.unwrap().to(now) > entry.task.start_delay() {
+                entry.last_run_requested.unwrap().to(now) > entry.task.start_delay()
+            {
                 entry.running_task.take().map(|r| r.interrupt());
                 entry.running_task = Some(entry.task.run());
                 entry.last_run_requested = None;

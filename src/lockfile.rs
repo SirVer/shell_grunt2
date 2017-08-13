@@ -18,9 +18,13 @@ impl Lockfile {
             env::temp_dir().join(sha.digest().to_string())
         };
 
-        match fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
             Ok(_) => Ok(Lockfile { path }),
-            Err(_) => Err(AlreadyExists(path))
+            Err(_) => Err(AlreadyExists(path)),
         }
     }
 }

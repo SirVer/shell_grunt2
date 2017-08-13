@@ -6,7 +6,7 @@ use self::lua::ffi::lua_State;
 use std::path;
 use std::rc::Rc;
 use std::cell::RefCell;
-use task::{Task, ShellTask, ShellCommand};
+use task::{ShellCommand, ShellTask, Task};
 
 // TODO(sirver): This whole file is quite the hack. If a LuaDictionary would get a proper
 // abstraction, this could be expressed more tightly. This is a bit tricky with the correct
@@ -138,10 +138,10 @@ impl ShellTask for LuaTask {
             let work_directory = pop_string(&mut state).map(path::PathBuf::from);
             state.pop(1); // S: D "commands dict" key
             result.push(ShellCommand {
-                            name,
-                            command,
-                            work_directory,
-                        });
+                name,
+                command,
+                work_directory,
+            });
         }
         state.pop(1); // S: D
         result

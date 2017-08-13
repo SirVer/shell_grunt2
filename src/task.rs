@@ -1,7 +1,7 @@
 use floating_duration::TimeFormat;
 use regex::Regex;
 use std::fs::OpenOptions;
-use std::io::{Write, BufReader, BufRead, BufWriter};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path;
 use std::thread;
 use std::process;
@@ -50,7 +50,9 @@ fn handle_output<R: BufRead, W: Write>(reader: R, echo: bool, mut redirect: Opti
         // of removing color.
         // for now this is lifted from chalk/ansi-regex.
         lazy_static! {
-            static ref REMOVE_ANSI: Regex = Regex::new("[\u{1b}\u{9b}][\\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PRZcf-nqry=><]").unwrap();
+            static ref REMOVE_ANSI: Regex = Regex::new(
+                "[\u{1b}\u{9b}][\\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PRZcf-nqry=><]")
+                .unwrap();
             static ref REMOVE_SHIFT_INOUT: Regex = Regex::new("[\u{0e}\u{0f}]").unwrap();
         }
         let no_color = REMOVE_ANSI.replace_all(&line, "");
@@ -81,12 +83,13 @@ struct RunningShellTask {
 }
 
 impl RunningShellTask {
-    pub fn spawn(commands: Vec<ShellCommand>,
-                 echo_stdout: bool,
-                 redirect_stdout: Option<path::PathBuf>,
-                 echo_stderr: bool,
-                 redirect_stderr: Option<path::PathBuf>)
-                 -> Self {
+    pub fn spawn(
+        commands: Vec<ShellCommand>,
+        echo_stdout: bool,
+        redirect_stdout: Option<path::PathBuf>,
+        echo_stderr: bool,
+        redirect_stderr: Option<path::PathBuf>,
+    ) -> Self {
         let mut this = RunningShellTask {
             commands: commands,
             echo_stdout,
@@ -146,26 +149,26 @@ impl RunningShellTask {
 
         let stdout = BufReader::new(child.stdout.take().unwrap());
         let echo_stdout = self.echo_stdout;
-        let redirect_stdout =
-            self.redirect_stdout
-                .as_ref()
-                .map(|path| BufWriter::with_capacity(512, creation_func(path).unwrap()));
-        io_threads
-            .push(thread::spawn(move || { handle_output(stdout, echo_stdout, redirect_stdout); }));
+        let redirect_stdout = self.redirect_stdout.as_ref().map(|path| {
+            BufWriter::with_capacity(512, creation_func(path).unwrap())
+        });
+        io_threads.push(thread::spawn(move || {
+            handle_output(stdout, echo_stdout, redirect_stdout);
+        }));
         let stderr = BufReader::new(child.stderr.take().unwrap());
         let echo_stderr = self.echo_stderr;
-        let redirect_stderr =
-            self.redirect_stderr
-                .as_ref()
-                .map(|path| BufWriter::with_capacity(512, creation_func(path).unwrap()));
-        io_threads
-            .push(thread::spawn(move || { handle_output(stderr, echo_stderr, redirect_stderr); }));
+        let redirect_stderr = self.redirect_stderr.as_ref().map(|path| {
+            BufWriter::with_capacity(512, creation_func(path).unwrap())
+        });
+        io_threads.push(thread::spawn(move || {
+            handle_output(stderr, echo_stderr, redirect_stderr);
+        }));
         self.running_child = Some(RunningChildState {
-                                      name: command.name,
-                                      io_threads,
-                                      child,
-                                      start_time,
-                                  });
+            name: command.name,
+            io_threads,
+            child,
+            start_time,
+        });
     }
 
     fn current_command_finished(&mut self, success: bool) {
@@ -214,11 +217,12 @@ impl RunningTask for RunningShellTask {
         }
 
         let success = match self.running_child
-                  .as_mut()
-                  .unwrap()
-                  .child
-                  .try_wait()
-                  .expect("try_wait") {
+            .as_mut()
+            .unwrap()
+            .child
+            .try_wait()
+            .expect("try_wait")
+        {
             Some(status) => status.success(),
             None => return false,
         };
@@ -249,10 +253,12 @@ impl RunningTask for RunningShellTask {
 impl<T: ShellTask> Runnable for T {
     /// Dispatches to 'program' with 'str'.
     fn run(&self) -> Box<RunningTask> {
-        Box::new(RunningShellTask::spawn(self.commands(),
-                                         !self.supress_stdout(),
-                                         self.redirect_stdout(),
-                                         !self.supress_stderr(),
-                                         self.redirect_stderr()))
+        Box::new(RunningShellTask::spawn(
+            self.commands(),
+            !self.supress_stdout(),
+            self.redirect_stdout(),
+            !self.supress_stderr(),
+            self.redirect_stderr(),
+        ))
     }
 }

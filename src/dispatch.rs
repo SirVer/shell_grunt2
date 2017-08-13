@@ -55,12 +55,13 @@ impl<'a> ShellGrunt2<'a> {
                     continue;
                 }
 
-                let entry = self.work_items.entry(task_idx).or_insert(Item {
-                                                                             last_run_requested:
-                                                                                 None,
-                                                                             task: task.borrow(),
-                                                                             running_task: None,
-                                                                         });
+                let entry = self.work_items
+                    .entry(task_idx)
+                    .or_insert(Item {
+                                   last_run_requested: None,
+                                   task: task.borrow(),
+                                   running_task: None,
+                               });
                 entry.last_run_requested = Some(time::PreciseTime::now());
                 entry.task = task.borrow();
             }
@@ -82,11 +83,7 @@ impl<'a> ShellGrunt2<'a> {
                 continue;
             }
 
-            if entry.running_task.is_some() &&
-               entry.running_task
-                   .as_mut()
-                   .unwrap()
-                   .done() {
+            if entry.running_task.is_some() && entry.running_task.as_mut().unwrap().done() {
                 done.insert(task_idx.clone());
             }
         }

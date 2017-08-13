@@ -5,7 +5,9 @@ extern crate time;
 
 use notify::Watcher;
 use shell_grunt2::task::{Task, Runnable, RunningTask};
+use shell_grunt2::lockfile;
 use std::time::Duration;
+use std::process;
 use std::path;
 use std::sync::mpsc;
 use std::thread;
@@ -51,7 +53,9 @@ fn watch_file_events(watcher_file: &str) {
     // outside. :(
     let (events_tx, events_rx) = mpsc::channel();
     let mut watcher = notify::watcher(events_tx, Duration::from_millis(50)).unwrap();
-    watcher.watch(&path::Path::new("."), notify::RecursiveMode::Recursive).unwrap();
+    watcher
+        .watch(&path::Path::new("."), notify::RecursiveMode::Recursive)
+        .unwrap();
 
     let (should_restart_tx, should_restart_rx) = mpsc::channel();
     let mut tasks: Vec<Box<Task>> = vec![Box::new(ReloadWatcherFile {
@@ -76,9 +80,20 @@ fn watch_file_events(watcher_file: &str) {
 fn main() {
     let matches = clap::App::new("shell_grunt2")
         .about("Watches the file system and executes commands from a Lua file.")
-        .arg(clap::Arg::with_name("file").short("f").help("Lua file to use [watcher.lua]"))
+        .arg(clap::Arg::with_name("file")
+                 .short("f")
+                 .help("Lua file to use [watcher.lua]"))
         .get_matches();
     let watcher_file = matches.value_of("file").unwrap_or("watcher.lua");
+
+    let _lockfile = match lockfile::Lockfile::new(watcher_file) {
+        Ok(lockfile) => lockfile,
+        Err(lockfile::AlreadyExists(path)) => {
+            println!("Another shell grunt is already running for {}. Delete\n\n    {}\n\nif you sure this is untrue. Exiting.",
+                     watcher_file, path.to_string_lossy());
+            process::exit(1);
+        }
+    };
 
     loop {
         println!("Watching file system with tasks from {}", watcher_file);

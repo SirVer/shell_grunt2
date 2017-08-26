@@ -17,7 +17,7 @@ use std::thread;
 
 struct ReloadWatcherFile {
     file_name: String,
-    should_restart_tx: mpsc::Sender<()>,
+    should_reload: Arc<AtomicBool>,
 }
 
 struct RunningReloadWatcherFile;
@@ -32,7 +32,7 @@ impl RunningTask for RunningReloadWatcherFile {
 
 impl Runnable for ReloadWatcherFile {
     fn run(&self) -> Box<RunningTask> {
-        self.should_restart_tx.send(()).unwrap();
+        self.should_reload.store(true, Ordering::SeqCst);
         Box::new(RunningReloadWatcherFile {})
     }
 }
@@ -54,11 +54,10 @@ fn watch_file_events(watcher_file: &str) {
     let saw_interrupt_signal = Arc::new(AtomicBool::new(false));
     let r = saw_interrupt_signal.clone();
     ctrlc::set_handler(move || {
-        println!("Saw ctrl-c. Terminating!");
         r.store(true, Ordering::SeqCst);
     }).expect("Error setting Ctrl-C handler");
 
-    'outer: loop {
+    loop {
         println!("Watching file system with tasks from {}", watcher_file);
 
         // Ideally, the RecommendedWatcher would be owned by ShellGrunt2, but whenever I try that, the
@@ -70,11 +69,11 @@ fn watch_file_events(watcher_file: &str) {
             .watch(&path::Path::new("."), notify::RecursiveMode::Recursive)
             .unwrap();
 
-        let (should_restart_tx, should_restart_rx) = mpsc::channel();
+        let should_reload = Arc::new(AtomicBool::new(false));
         let mut tasks: Vec<Box<Task>> = vec![
             Box::new(ReloadWatcherFile {
                 file_name: watcher_file.to_string(),
-                should_restart_tx,
+                should_reload: should_reload.clone(),
             }),
         ];
         for task in shell_grunt2::lua_task::run_file(path::Path::new(watcher_file)) {
@@ -87,12 +86,10 @@ fn watch_file_events(watcher_file: &str) {
             if saw_interrupt_signal.load(Ordering::SeqCst) {
                 return;
             }
-            match should_restart_rx.try_recv() {
-                Err(mpsc::TryRecvError::Empty) => {
-                    shell_grunt2.spin();
-                }
-                Ok(_) | Err(_) => continue 'outer,
+            if should_reload.load(Ordering::SeqCst) {
+                break;
             }
+            shell_grunt2.spin();
         }
     }
 }

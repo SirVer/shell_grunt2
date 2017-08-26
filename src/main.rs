@@ -1,8 +1,8 @@
 extern crate clap;
+extern crate ctrlc;
 extern crate notify;
 extern crate shell_grunt2;
 extern crate time;
-extern crate ctrlc;
 
 use notify::Watcher;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -53,15 +53,14 @@ impl Task for ReloadWatcherFile {
 fn watch_file_events(watcher_file: &str) {
     let saw_interrupt_signal = Arc::new(AtomicBool::new(false));
     let r = saw_interrupt_signal.clone();
-    ctrlc::set_handler(move || {
-        r.store(true, Ordering::SeqCst);
-    }).expect("Error setting Ctrl-C handler");
+    ctrlc::set_handler(move || { r.store(true, Ordering::SeqCst); })
+        .expect("Error setting Ctrl-C handler");
 
     loop {
         println!("Watching file system with tasks from {}", watcher_file);
 
-        // Ideally, the RecommendedWatcher would be owned by ShellGrunt2, but whenever I try that, the
-        // tool crashes whenever it should receive an event on the channel. So it needs to stay
+        // Ideally, the RecommendedWatcher would be owned by ShellGrunt2, but whenever I try that,
+        // the tool crashes whenever it should receive an event on the channel. So it needs to stay
         // outside. :(
         let (events_tx, events_rx) = mpsc::channel();
         let mut watcher = notify::watcher(events_tx, Duration::from_millis(50)).unwrap();
@@ -111,7 +110,8 @@ fn main() {
         Ok(lockfile) => lockfile,
         Err(lockfile::AlreadyExists(path)) => {
             println!(
-                "Another shell grunt is already running for {}. Delete\n\n    {}\n\nif you sure this is untrue. Exiting.",
+                "Another shell grunt is already running for {}. \
+                 Delete\n\n    {}\n\nif you sure this is untrue. Exiting.",
                 watcher_file,
                 path.to_string_lossy()
             );

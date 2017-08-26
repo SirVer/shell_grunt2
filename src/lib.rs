@@ -1,11 +1,11 @@
 extern crate floating_duration;
-extern crate notify;
-extern crate regex;
-extern crate term;
-extern crate sha1;
-extern crate time;
 #[macro_use]
 extern crate lazy_static;
+extern crate notify;
+extern crate regex;
+extern crate sha1;
+extern crate term;
+extern crate time;
 
 pub mod dispatch;
 pub mod lockfile;

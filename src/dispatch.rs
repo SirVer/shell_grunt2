@@ -24,7 +24,6 @@ impl<'a> ShellGrunt2<'a> {
         tasks: &'a [Box<Task>],
         events_rx: mpsc::Receiver<notify::DebouncedEvent>,
     ) -> ShellGrunt2<'a> {
-
         ShellGrunt2 {
             tasks: tasks,
             work_items: HashMap::new(),
@@ -37,9 +36,11 @@ impl<'a> ShellGrunt2<'a> {
             use notify::DebouncedEvent::*;
 
             let path = match ev {
-                NoticeWrite(path) | NoticeRemove(path) | Create(path) | Write(path) | Remove(path) => {
-                    path
-                }
+                NoticeWrite(path) |
+                NoticeRemove(path) |
+                Create(path) |
+                Write(path) |
+                Remove(path) => path,
 
                 Rename(_, new_path) => new_path,
 

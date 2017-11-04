@@ -59,9 +59,9 @@ fn handle_output<R: BufRead, W: Write>(reader: R, echo: bool, mut redirect: Opti
         }
         let no_color = REMOVE_ANSI.replace_all(&line, "");
         let no_shift = REMOVE_SHIFT_INOUT.replace_all(&no_color, "");
-        redirect
-            .as_mut()
-            .map(|w| writeln!(w, "{}", no_shift).unwrap());
+        redirect.as_mut().map(
+            |w| writeln!(w, "{}", no_shift).unwrap(),
+        );
         if echo {
             println!("{}", line);
         }
@@ -143,9 +143,9 @@ impl RunningShellTask {
                     child.env(k, v);
                 }
             }
-            child
-                .spawn()
-                .unwrap_or_else(|e| panic!("failed to execute: {}", e))
+            child.spawn().unwrap_or_else(
+                |e| panic!("failed to execute: {}", e),
+            )
         };
 
         let mut io_threads = Vec::new();
@@ -232,8 +232,7 @@ impl RunningTask for RunningShellTask {
             .unwrap()
             .child
             .try_wait()
-            .expect("try_wait")
-        {
+            .expect("try_wait") {
             Some(status) => status.success(),
             None => return false,
         };
@@ -245,9 +244,9 @@ impl RunningTask for RunningShellTask {
         if self.done() {
             return;
         }
-        self.running_child
-            .take()
-            .map(|mut r| r.child.wait().expect("wait"));
+        self.running_child.take().map(|mut r| {
+            r.child.wait().expect("wait")
+        });
         self.wait()
     }
 
@@ -255,9 +254,9 @@ impl RunningTask for RunningShellTask {
         if self.done() {
             return;
         }
-        self.running_child
-            .take()
-            .map(|mut r| r.child.kill().expect("kill"));
+        self.running_child.take().map(|mut r| {
+            r.child.kill().expect("kill")
+        });
     }
 }
 

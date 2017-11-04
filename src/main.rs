@@ -98,11 +98,9 @@ fn main() {
         .about(
             "Watches the file system and executes commands from a Lua file.",
         )
-        .arg(
-            clap::Arg::with_name("file")
-                .short("f")
-                .help("Lua file to use [watcher.lua]"),
-        )
+        .arg(clap::Arg::with_name("file").short("f").help(
+            "Lua file to use [watcher.lua]",
+        ))
         .get_matches();
     let watcher_file = matches.value_of("file").unwrap_or("watcher.lua");
 

@@ -3,9 +3,10 @@ extern crate lua;
 extern crate time;
 
 use self::lua::ffi::lua_State;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::path;
 use std::rc::Rc;
-use std::cell::RefCell;
 use task::{ShellCommand, ShellTask, Task};
 
 // TODO(sirver): This whole file is quite the hack. If a LuaDictionary would get a proper
@@ -162,6 +163,25 @@ impl ShellTask for LuaTask {
 
     fn supress_stdout(&self) -> bool {
         self.get_bool("suppress_stdout").unwrap_or(false)
+    }
+
+    fn environment(&self) -> Option<HashMap<String, String>> {
+        let mut state = self.state.borrow_mut();
+        self.get_value_in_our_dict("environment", &mut state);
+        if state.is_nil(-1) {
+            state.pop(1);
+            return None;
+        }
+        let mut result = HashMap::new();
+        state.push_nil(); // S: D "env dict" nil
+        while state.next(-2) {
+            // S: D "env dict" key value
+            let value = pop_string(&mut state).unwrap();
+            let key = state.check_string(-1).to_string();
+            result.insert(key, value);
+        }
+        state.pop(1); // S: D
+        Some(result)
     }
 }
 

@@ -5,6 +5,7 @@ use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path;
 use std::thread;
 use std::process;
+use std::collections::HashMap;
 use term;
 use time;
 
@@ -32,6 +33,7 @@ pub struct ShellCommand {
 pub trait ShellTask: Task {
     // Will run the first command, on success the second..
     fn commands(&self) -> Vec<ShellCommand>;
+    fn environment(&self) -> Option<HashMap<String, String>>;
     fn redirect_stdout(&self) -> Option<path::PathBuf>;
     fn redirect_stderr(&self) -> Option<path::PathBuf>;
     fn supress_stdout(&self) -> bool;
@@ -75,6 +77,7 @@ struct RunningChildState {
 
 struct RunningShellTask {
     commands: Vec<ShellCommand>,
+    environment: Option<HashMap<String, String>>,
     echo_stdout: bool,
     redirect_stdout: Option<path::PathBuf>,
     echo_stderr: bool,
@@ -85,13 +88,15 @@ struct RunningShellTask {
 impl RunningShellTask {
     pub fn spawn(
         commands: Vec<ShellCommand>,
+        environment: Option<HashMap<String, String>>,
         echo_stdout: bool,
         redirect_stdout: Option<path::PathBuf>,
         echo_stderr: bool,
         redirect_stderr: Option<path::PathBuf>,
     ) -> Self {
         let mut this = RunningShellTask {
-            commands: commands,
+            commands,
+            environment,
             echo_stdout,
             redirect_stdout,
             echo_stderr,
@@ -114,6 +119,7 @@ impl RunningShellTask {
         }
         let command = self.commands.remove(0);
 
+        // TODO(sirver): This should use something like 'conch-parser', this is quite cheap.
         let args = command.command.split_whitespace().collect::<Vec<&str>>();
         let mut terminal = term::stdout().unwrap();
         terminal.fg(term::color::CYAN).unwrap();
@@ -131,6 +137,11 @@ impl RunningShellTask {
                 .stderr(process::Stdio::piped());
             if let Some(path) = command.work_directory {
                 child.current_dir(path);
+            }
+            if let Some(ref environment) = self.environment {
+                for (k, v) in environment {
+                    child.env(k, v);
+                }
             }
             child
                 .spawn()
@@ -255,6 +266,7 @@ impl<T: ShellTask> Runnable for T {
     fn run(&self) -> Box<RunningTask> {
         Box::new(RunningShellTask::spawn(
             self.commands(),
+            self.environment(),
             !self.supress_stdout(),
             self.redirect_stdout(),
             !self.supress_stderr(),

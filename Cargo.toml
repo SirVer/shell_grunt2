@@ -11,7 +11,11 @@ libc = "0.2.22"
 lua = "0.0.10"
 notify = "4.0.1"
 regex = "0.2.1"
+self_update = "0.4.2"
 sha1 = "0.2.0"
 term = "0.4.5"
 time = "^0.1"
-ctrlc = { version = "3.0", features = ["termination"] }
+
+[dependencies.ctrlc]
+features = ["termination"]
+version = "3.0"

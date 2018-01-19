@@ -3,6 +3,7 @@ extern crate ctrlc;
 extern crate notify;
 extern crate shell_grunt2;
 extern crate time;
+#[macro_use] extern crate self_update;
 
 use notify::Watcher;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -14,6 +15,22 @@ use std::process;
 use std::path;
 use std::sync::mpsc;
 use std::thread;
+
+fn update() -> Result<(), Box<::std::error::Error>> {
+    let target = self_update::get_target()?;
+    self_update::backends::github::Update::configure()?
+        .repo_owner("SirVer")
+        .repo_name("shell_grunt2")
+        .target(&target)
+        .bin_name("shell_grunt2")
+        .show_download_progress(true)
+        .show_output(false)
+        .no_confirm(true)
+        .current_version(cargo_crate_version!())
+        .build()?
+        .update()?;
+    Ok(())
+}
 
 struct ReloadWatcherFile {
     file_name: String,
@@ -95,13 +112,23 @@ fn watch_file_events(watcher_file: &str) {
 
 fn main() {
     let matches = clap::App::new("shell_grunt2")
+        .version(cargo_crate_version!())
         .about(
             "Watches the file system and executes commands from a Lua file.",
         )
         .arg(clap::Arg::with_name("file").short("f").help(
             "Lua file to use [watcher.lua]",
         ))
+        .arg(clap::Arg::with_name("update")
+             .long("update")
+             .help("Update binary in-place from latest release"))
         .get_matches();
+
+    if matches.is_present("update") {
+        update().unwrap();
+        return;
+    }
+
     let watcher_file = matches.value_of("file").unwrap_or("watcher.lua");
 
     let _lockfile = match lockfile::Lockfile::new(watcher_file) {

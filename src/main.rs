@@ -3,7 +3,8 @@ extern crate ctrlc;
 extern crate notify;
 extern crate shell_grunt2;
 extern crate time;
-#[macro_use] extern crate self_update;
+#[macro_use]
+extern crate self_update;
 
 use notify::Watcher;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -119,9 +120,9 @@ fn main() {
         .arg(clap::Arg::with_name("file").short("f").help(
             "Lua file to use [watcher.lua]",
         ))
-        .arg(clap::Arg::with_name("update")
-             .long("update")
-             .help("Update binary in-place from latest release"))
+        .arg(clap::Arg::with_name("update").long("update").help(
+            "Update binary in-place from latest release",
+        ))
         .get_matches();
 
     if matches.is_present("update") {

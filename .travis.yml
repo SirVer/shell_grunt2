@@ -4,11 +4,10 @@
 dist: trusty
 language: rust
 services: docker
-sudo: required
 
 env:
   global:
-    - CRATE_NAME=trust
+    - CRATE_NAME=shell_grunt2
 
 matrix:
   include:

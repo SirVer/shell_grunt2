@@ -8,7 +8,6 @@ clap = "2.24.2"
 floating-duration = "0.1.1"
 lazy_static = "0.2.8"
 libc = "0.2.22"
-lua = "0.0.10"
 notify = "4.0.1"
 regex = "0.2.1"
 self_update = "0.4.2"
@@ -19,3 +18,10 @@ time = "^0.1"
 [dependencies.ctrlc]
 features = ["termination"]
 version = "3.0"
+
+[dependencies.lua]
+# Using this because it disables readline, which gave me trouble and fixes
+# compilation on arm.
+git = "https://github.com/SirVer/rust-lua53"
+branch = "00_my_patches"
+

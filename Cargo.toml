@@ -6,13 +6,13 @@ version = "0.1.2"
 [dependencies]
 clap = "2.24.2"
 floating-duration = "0.1.1"
-lazy_static = "0.2.8"
+lazy_static = "1.0.0"
 libc = "0.2.22"
 notify = "4.0.1"
 regex = "0.2.1"
 self_update = "0.4.2"
-sha1 = "0.2.0"
-term = "0.4.5"
+sha1 = "0.6.0"
+term = "0.5.1"
 time = "^0.1"
 
 [dependencies.ctrlc]

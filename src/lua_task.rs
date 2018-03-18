@@ -56,10 +56,7 @@ struct LuaTask {
 
 impl LuaTask {
     fn new(state: Rc<RefCell<lua::State>>, key: i64) -> LuaTask {
-        LuaTask {
-            state: state,
-            key: key,
-        }
+        LuaTask { state, key }
     }
 
     fn get_value_in_our_dict(&self, key: &str, state: &mut lua::State) {
@@ -114,7 +111,7 @@ impl Task for LuaTask {
     fn start_delay(&self) -> time::Duration {
         self.get_int("start_delay")
             .map(time::Duration::milliseconds)
-            .unwrap_or(time::Duration::milliseconds(50))
+            .unwrap_or_else(|| time::Duration::milliseconds(50))
     }
 }
 

@@ -25,9 +25,9 @@ impl<'a> ShellGrunt2<'a> {
         events_rx: mpsc::Receiver<notify::DebouncedEvent>,
     ) -> ShellGrunt2<'a> {
         ShellGrunt2 {
-            tasks: tasks,
+            tasks,
+            events_rx,
             work_items: HashMap::new(),
-            events_rx: events_rx,
         }
     }
 

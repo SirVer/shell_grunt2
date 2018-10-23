@@ -149,7 +149,6 @@ impl ShellTask for LuaTask {
         self.get_string("redirect_stdout").map(path::PathBuf::from)
     }
 
-
     fn redirect_stderr(&self) -> Option<path::PathBuf> {
         self.get_string("redirect_stderr").map(path::PathBuf::from)
     }

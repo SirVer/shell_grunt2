@@ -1,11 +1,11 @@
 use floating_duration::TimeFormat;
 use regex::Regex;
+use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path;
-use std::thread;
 use std::process;
-use std::collections::HashMap;
+use std::thread;
 use term;
 use time;
 
@@ -53,15 +53,16 @@ fn handle_output<R: BufRead, W: Write>(reader: R, echo: bool, mut redirect: Opti
         // for now this is lifted from chalk/ansi-regex.
         lazy_static! {
             static ref REMOVE_ANSI: Regex = Regex::new(
-                "[\u{1b}\u{9b}][\\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PRZcf-nqry=><]")
-                .unwrap();
+                "[\u{1b}\u{9b}][\\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PRZcf-nqry=><]"
+            )
+            .unwrap();
             static ref REMOVE_SHIFT_INOUT: Regex = Regex::new("[\u{0e}\u{0f}]").unwrap();
         }
         let no_color = REMOVE_ANSI.replace_all(&line, "");
         let no_shift = REMOVE_SHIFT_INOUT.replace_all(&no_color, "");
-        redirect.as_mut().map(
-            |w| writeln!(w, "{}", no_shift).unwrap(),
-        );
+        redirect
+            .as_mut()
+            .map(|w| writeln!(w, "{}", no_shift).unwrap());
         if echo {
             println!("{}", line);
         }
@@ -143,9 +144,9 @@ impl RunningShellTask {
                     child.env(k, v);
                 }
             }
-            child.spawn().unwrap_or_else(
-                |e| panic!("failed to execute: {}", e),
-            )
+            child
+                .spawn()
+                .unwrap_or_else(|e| panic!("failed to execute: {}", e))
         };
 
         let mut io_threads = Vec::new();
@@ -160,17 +161,19 @@ impl RunningShellTask {
 
         let stdout = BufReader::new(child.stdout.take().unwrap());
         let echo_stdout = self.echo_stdout;
-        let redirect_stdout = self.redirect_stdout.as_ref().map(|path| {
-            BufWriter::with_capacity(512, creation_func(path).unwrap())
-        });
+        let redirect_stdout = self
+            .redirect_stdout
+            .as_ref()
+            .map(|path| BufWriter::with_capacity(512, creation_func(path).unwrap()));
         io_threads.push(thread::spawn(move || {
             handle_output(stdout, echo_stdout, redirect_stdout);
         }));
         let stderr = BufReader::new(child.stderr.take().unwrap());
         let echo_stderr = self.echo_stderr;
-        let redirect_stderr = self.redirect_stderr.as_ref().map(|path| {
-            BufWriter::with_capacity(512, creation_func(path).unwrap())
-        });
+        let redirect_stderr = self
+            .redirect_stderr
+            .as_ref()
+            .map(|path| BufWriter::with_capacity(512, creation_func(path).unwrap()));
         io_threads.push(thread::spawn(move || {
             handle_output(stderr, echo_stderr, redirect_stderr);
         }));
@@ -227,12 +230,14 @@ impl RunningTask for RunningShellTask {
             return true;
         }
 
-        let success = match self.running_child
+        let success = match self
+            .running_child
             .as_mut()
             .unwrap()
             .child
             .try_wait()
-            .expect("try_wait") {
+            .expect("try_wait")
+        {
             Some(status) => status.success(),
             None => return false,
         };
@@ -244,9 +249,9 @@ impl RunningTask for RunningShellTask {
         if self.done() {
             return;
         }
-        self.running_child.take().map(|mut r| {
-            r.child.wait().expect("wait")
-        });
+        self.running_child
+            .take()
+            .map(|mut r| r.child.wait().expect("wait"));
         self.wait()
     }
 
@@ -254,9 +259,9 @@ impl RunningTask for RunningShellTask {
         if self.done() {
             return;
         }
-        self.running_child.take().map(|mut r| {
-            r.child.kill().expect("kill")
-        });
+        self.running_child
+            .take()
+            .map(|mut r| r.child.kill().expect("kill"));
     }
 }
 

@@ -1,9 +1,9 @@
 use notify;
 use time;
 
+use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc;
-use std::borrow::Borrow;
 use task::{RunningTask, Task};
 
 struct Item<'a> {
@@ -36,11 +36,8 @@ impl<'a> ShellGrunt2<'a> {
             use notify::DebouncedEvent::*;
 
             let path = match ev {
-                NoticeWrite(path) |
-                NoticeRemove(path) |
-                Create(path) |
-                Write(path) |
-                Remove(path) => path,
+                NoticeWrite(path) | NoticeRemove(path) | Create(path) | Write(path)
+                | Remove(path) => path,
 
                 Rename(_, new_path) => new_path,
 
@@ -73,8 +70,8 @@ impl<'a> ShellGrunt2<'a> {
 
         let now = time::PreciseTime::now();
         for (task_idx, entry) in &mut self.work_items {
-            if entry.last_run_requested.is_some() &&
-                entry.last_run_requested.unwrap().to(now) > entry.task.start_delay()
+            if entry.last_run_requested.is_some()
+                && entry.last_run_requested.unwrap().to(now) > entry.task.start_delay()
             {
                 entry.running_task.take().map(|r| r.interrupt());
                 entry.running_task = Some(entry.task.run());

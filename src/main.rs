@@ -7,15 +7,15 @@ extern crate time;
 extern crate self_update;
 
 use notify::Watcher;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use shell_grunt2::task::{Runnable, RunningTask, Task};
 use shell_grunt2::lockfile;
-use std::time::Duration;
-use std::process;
+use shell_grunt2::task::{Runnable, RunningTask, Task};
 use std::path;
+use std::process;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
+use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
 
 fn update() -> Result<(), Box<::std::error::Error>> {
     let target = self_update::get_target()?;
@@ -71,8 +71,10 @@ impl Task for ReloadWatcherFile {
 fn watch_file_events(watcher_file: &str) {
     let saw_interrupt_signal = Arc::new(AtomicBool::new(false));
     let r = saw_interrupt_signal.clone();
-    ctrlc::set_handler(move || { r.store(true, Ordering::SeqCst); })
-        .expect("Error setting Ctrl-C handler");
+    ctrlc::set_handler(move || {
+        r.store(true, Ordering::SeqCst);
+    })
+    .expect("Error setting Ctrl-C handler");
 
     loop {
         println!("Watching file system with tasks from {}", watcher_file);
@@ -87,12 +89,10 @@ fn watch_file_events(watcher_file: &str) {
             .unwrap();
 
         let should_reload = Arc::new(AtomicBool::new(false));
-        let mut tasks: Vec<Box<Task>> = vec![
-            Box::new(ReloadWatcherFile {
-                file_name: watcher_file.to_string(),
-                should_reload: should_reload.clone(),
-            }),
-        ];
+        let mut tasks: Vec<Box<Task>> = vec![Box::new(ReloadWatcherFile {
+            file_name: watcher_file.to_string(),
+            should_reload: should_reload.clone(),
+        })];
         for task in shell_grunt2::lua_task::run_file(path::Path::new(watcher_file)) {
             tasks.push(task);
         }
@@ -114,15 +114,18 @@ fn watch_file_events(watcher_file: &str) {
 fn main() {
     let matches = clap::App::new("shell_grunt2")
         .version(cargo_crate_version!())
-        .about(
-            "Watches the file system and executes commands from a Lua file.",
+        .about("Watches the file system and executes commands from a Lua file.")
+        .arg(
+            clap::Arg::with_name("file")
+                .short("f")
+                .takes_value(true)
+                .help("Lua file to use [watcher.lua]"),
         )
-        .arg(clap::Arg::with_name("file").short("f").help(
-            "Lua file to use [watcher.lua]",
-        ))
-        .arg(clap::Arg::with_name("update").long("update").help(
-            "Update binary in-place from latest release",
-        ))
+        .arg(
+            clap::Arg::with_name("update")
+                .long("update")
+                .help("Update binary in-place from latest release"),
+        )
         .get_matches();
 
     if matches.is_present("update") {

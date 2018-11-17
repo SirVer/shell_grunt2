@@ -1,19 +1,19 @@
 use notify;
 use time;
 
+use crate::task::{RunningTask, Task};
 use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc;
-use crate::task::{RunningTask, Task};
 
 struct Item<'a> {
     last_run_requested: Option<time::PreciseTime>,
-    task: &'a Task,
-    running_task: Option<Box<RunningTask>>,
+    task: &'a dyn Task,
+    running_task: Option<Box<dyn RunningTask>>,
 }
 
 pub struct ShellGrunt2<'a> {
-    tasks: &'a [Box<Task>],
+    tasks: &'a [Box<dyn Task>],
     events_rx: mpsc::Receiver<notify::DebouncedEvent>,
     // Maps from index into 'tasks' to the current item.
     work_items: HashMap<usize, Item<'a>>,
@@ -21,7 +21,7 @@ pub struct ShellGrunt2<'a> {
 
 impl<'a> ShellGrunt2<'a> {
     pub fn new(
-        tasks: &'a [Box<Task>],
+        tasks: &'a [Box<dyn Task>],
         events_rx: mpsc::Receiver<notify::DebouncedEvent>,
     ) -> ShellGrunt2<'a> {
         ShellGrunt2 {

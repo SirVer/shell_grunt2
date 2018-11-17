@@ -1,4 +1,5 @@
 use floating_duration::TimeFormat;
+use lazy_static::lazy_static;
 use regex::Regex;
 use std::collections::HashMap;
 use std::fs::OpenOptions;
@@ -16,7 +17,7 @@ pub trait RunningTask {
 }
 
 pub trait Runnable {
-    fn run(&self) -> Box<RunningTask>;
+    fn run(&self) -> Box<dyn RunningTask>;
 }
 
 pub trait Task: Runnable {
@@ -267,7 +268,7 @@ impl RunningTask for RunningShellTask {
 
 impl<T: ShellTask> Runnable for T {
     /// Dispatches to 'program' with 'str'.
-    fn run(&self) -> Box<RunningTask> {
+    fn run(&self) -> Box<dyn RunningTask> {
         Box::new(RunningShellTask::spawn(
             self.commands(),
             self.environment(),

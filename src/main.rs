@@ -1,8 +1,8 @@
-extern crate clap;
-extern crate ctrlc;
-extern crate notify;
-extern crate shell_grunt2;
-extern crate time;
+use clap;
+use ctrlc;
+use notify;
+use shell_grunt2;
+use time;
 #[macro_use]
 extern crate self_update;
 
@@ -17,7 +17,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-fn update() -> Result<(), Box<::std::error::Error>> {
+fn update() -> Result<(), Box<dyn (::std::error::Error)>> {
     let target = self_update::get_target()?;
     self_update::backends::github::Update::configure()?
         .repo_owner("SirVer")
@@ -49,7 +49,7 @@ impl RunningTask for RunningReloadWatcherFile {
 }
 
 impl Runnable for ReloadWatcherFile {
-    fn run(&self) -> Box<RunningTask> {
+    fn run(&self) -> Box<dyn RunningTask> {
         self.should_reload.store(true, Ordering::SeqCst);
         Box::new(RunningReloadWatcherFile {})
     }
@@ -89,7 +89,7 @@ fn watch_file_events(watcher_file: &str) {
             .unwrap();
 
         let should_reload = Arc::new(AtomicBool::new(false));
-        let mut tasks: Vec<Box<Task>> = vec![Box::new(ReloadWatcherFile {
+        let mut tasks: Vec<Box<dyn Task>> = vec![Box::new(ReloadWatcherFile {
             file_name: watcher_file.to_string(),
             should_reload: should_reload.clone(),
         })];

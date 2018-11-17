@@ -1,13 +1,13 @@
-extern crate libc;
-extern crate lua;
-extern crate time;
+use libc;
+use lua;
+use time;
 
 use self::lua::ffi::lua_State;
+use crate::task::{ShellCommand, ShellTask, Task};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path;
 use std::rc::Rc;
-use crate::task::{ShellCommand, ShellTask, Task};
 
 // TODO(sirver): This whole file is quite the hack. If a LuaDictionary would get a proper
 // abstraction, this could be expressed more tightly. This is a bit tricky with the correct
@@ -241,7 +241,7 @@ fn inject_path_functions(state: &mut lua::State) {
     state.pop(1);
 }
 
-pub fn run_file(path: &path::Path) -> Vec<Box<Task>> {
+pub fn run_file(path: &path::Path) -> Vec<Box<dyn Task>> {
     let mut state = lua::State::new();
     state.open_libs();
 
@@ -264,7 +264,7 @@ pub fn run_file(path: &path::Path) -> Vec<Box<Task>> {
     while state.next(-2) {
         let key = state.check_integer(-2); // S: D key value
         state.pop(1); // S: D key
-        tasks.push(Box::new(LuaTask::new(state_rc.clone(), key)) as Box<Task>);
+        tasks.push(Box::new(LuaTask::new(state_rc.clone(), key)) as Box<dyn Task>);
     }
     // S: D
     tasks

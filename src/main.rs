@@ -3,13 +3,11 @@ use ctrlc;
 use notify;
 use shell_grunt2;
 use time;
-#[macro_use]
-extern crate self_update;
 
 use notify::Watcher;
 use shell_grunt2::lockfile;
 use shell_grunt2::task::{Runnable, RunningTask, Task};
-use std::path;
+use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -27,14 +25,14 @@ fn update() -> Result<(), Box<dyn (::std::error::Error)>> {
         .show_download_progress(true)
         .show_output(false)
         .no_confirm(true)
-        .current_version(cargo_crate_version!())
+        .current_version(self_update::cargo_crate_version!())
         .build()?
         .update()?;
     Ok(())
 }
 
 struct ReloadWatcherFile {
-    file_name: String,
+    file_name: PathBuf,
     should_reload: Arc<AtomicBool>,
 }
 
@@ -56,11 +54,8 @@ impl Runnable for ReloadWatcherFile {
 }
 
 impl Task for ReloadWatcherFile {
-    fn should_run(&self, path: &path::Path) -> bool {
-        if let Some(file_name) = path.file_name() {
-            return file_name.to_string_lossy() == self.file_name;
-        }
-        false
+    fn should_run(&self, path: &Path) -> bool {
+        path == self.file_name
     }
 
     fn start_delay(&self) -> time::Duration {
@@ -68,7 +63,7 @@ impl Task for ReloadWatcherFile {
     }
 }
 
-fn watch_file_events(watcher_file: &str) {
+fn watch_file_events(watcher_file: impl AsRef<Path>) {
     let saw_interrupt_signal = Arc::new(AtomicBool::new(false));
     let r = saw_interrupt_signal.clone();
     ctrlc::set_handler(move || {
@@ -76,8 +71,15 @@ fn watch_file_events(watcher_file: &str) {
     })
     .expect("Error setting Ctrl-C handler");
 
+    let current_dir = std::fs::canonicalize(".").unwrap();
+    let watcher_file = std::fs::canonicalize(watcher_file.as_ref()).unwrap();
     loop {
-        println!("Watching file system with tasks from {}", watcher_file);
+        let diff = pathdiff::diff_paths(&watcher_file, &current_dir);
+        let disp = match &diff {
+            Some(diff) => diff,
+            None => &watcher_file,
+        };
+        println!("Watching file system with tasks from {}", disp.display());
 
         // Ideally, the RecommendedWatcher would be owned by ShellGrunt2, but whenever I try that,
         // the tool crashes whenever it should receive an event on the channel. So it needs to stay
@@ -85,15 +87,18 @@ fn watch_file_events(watcher_file: &str) {
         let (events_tx, events_rx) = mpsc::channel();
         let mut watcher = notify::watcher(events_tx, Duration::from_millis(50)).unwrap();
         watcher
-            .watch(&path::Path::new("."), notify::RecursiveMode::Recursive)
+            .watch(&current_dir, notify::RecursiveMode::Recursive)
+            .unwrap();
+        watcher
+            .watch(&watcher_file, notify::RecursiveMode::Recursive)
             .unwrap();
 
         let should_reload = Arc::new(AtomicBool::new(false));
         let mut tasks: Vec<Box<dyn Task>> = vec![Box::new(ReloadWatcherFile {
-            file_name: watcher_file.to_string(),
+            file_name: watcher_file.clone(),
             should_reload: should_reload.clone(),
         })];
-        for task in shell_grunt2::lua_task::run_file(path::Path::new(watcher_file)) {
+        for task in shell_grunt2::lua_task::run_file(&watcher_file) {
             tasks.push(task);
         }
         let mut shell_grunt2 = shell_grunt2::ShellGrunt2::new(&tasks, events_rx);
@@ -113,7 +118,7 @@ fn watch_file_events(watcher_file: &str) {
 
 fn main() {
     let matches = clap::App::new("shell_grunt2")
-        .version(cargo_crate_version!())
+        .version(self_update::cargo_crate_version!())
         .about("Watches the file system and executes commands from a Lua file.")
         .arg(
             clap::Arg::with_name("file")

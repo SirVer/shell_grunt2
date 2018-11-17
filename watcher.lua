@@ -11,7 +11,7 @@ return {
       },
       commands = {
          {
-            name = "Cargo build (release)",
+            name = "Cargo jump (release)",
             command = "cargo +nightly build --release --color always",
          },
       },

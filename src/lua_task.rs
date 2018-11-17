@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path;
 use std::rc::Rc;
-use task::{ShellCommand, ShellTask, Task};
+use crate::task::{ShellCommand, ShellTask, Task};
 
 // TODO(sirver): This whole file is quite the hack. If a LuaDictionary would get a proper
 // abstraction, this could be expressed more tightly. This is a bit tricky with the correct

@@ -12,7 +12,7 @@ return {
       commands = {
          {
             name = "Cargo build (release)",
-            command = "cargo build --release --color always",
+            command = "cargo +nightly build --release --color always",
          },
       },
    },

@@ -2,6 +2,7 @@
 authors = ["Holger Rapp <HolgerRapp@gmx.net>"]
 name = "shell_grunt2"
 version = "0.1.5"
+edition = "2018"
 
 [dependencies]
 clap = "2.24.2"
@@ -24,4 +25,3 @@ version = "3.0"
 # compilation on arm.
 git = "https://github.com/SirVer/rust-lua53"
 branch = "00_my_patches"
-

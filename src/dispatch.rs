@@ -4,7 +4,7 @@ use time;
 use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc;
-use task::{RunningTask, Task};
+use crate::task::{RunningTask, Task};
 
 struct Item<'a> {
     last_run_requested: Option<time::PreciseTime>,

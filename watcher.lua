@@ -3,15 +3,15 @@ return {
       should_run = function(path)
          return path:ext() == "rs" or path:ext() == "toml" 
       end,
-      redirect_stdout = "/tmp/build.out",
-      redirect_stderr = "/tmp/build.err",
+      redirect_stdout = "/tmp/cargo.out",
+      redirect_stderr = "/tmp/cargo.err",
       start_delay = 50,
       environment = {
          CARGO_INCREMENTAL = "1",
       },
       commands = {
          {
-            name = "Cargo jump (release)",
+            name = "Cargo build (release)",
             command = "cargo +nightly build --release --color always",
          },
       },

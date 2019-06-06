@@ -85,6 +85,70 @@ struct RunningShellTask {
     echo_stderr: bool,
     redirect_stderr: Option<path::PathBuf>,
     running_child: Option<RunningChildState>,
+    progress_reporter: Box<dyn ProgressReporter>,
+}
+
+trait ProgressReporter {
+    fn clear_screen(&self);
+    fn starting_command(&self, name: &str);
+    fn command_finished(&self, name: &str, duration: std::time::Duration, success: bool);
+}
+
+/// A pretty printing progress reporter.
+struct TermProgressReporter;
+
+impl ProgressReporter for TermProgressReporter {
+    fn clear_screen(&self) {
+        let mut terminal = term::stdout().unwrap();
+        write!(terminal, "\x1b[2J").unwrap(); // Clear the screen.
+    }
+
+    fn starting_command(&self, name: &str) {
+        let mut terminal = term::stdout().unwrap();
+        terminal.fg(term::color::CYAN).unwrap();
+        writeln!(terminal, "==> {}", name).unwrap();
+        terminal.reset().unwrap();
+        terminal.flush().unwrap();
+    }
+
+    fn command_finished(&self, name: &str, duration: std::time::Duration, success: bool) {
+        let mut terminal = term::stdout().unwrap();
+        terminal.fg(term::color::CYAN).unwrap();
+        write!(terminal, "==> {}: ", name).unwrap();
+        terminal.reset().unwrap();
+        if success {
+            terminal.fg(term::color::GREEN).unwrap();
+            write!(terminal, "Success. ").unwrap();
+        } else {
+            terminal.fg(term::color::RED).unwrap();
+            write!(terminal, "Failed. ").unwrap();
+        }
+        terminal.reset().unwrap();
+        write!(terminal, "({})", TimeFormat(duration)).unwrap();
+        writeln!(terminal, "").unwrap();
+    }
+}
+
+/// A dumb progress reporter for non-interactive shells.
+struct DumbProgressReporter;
+
+impl ProgressReporter for DumbProgressReporter {
+    fn clear_screen(&self) {}
+
+    fn starting_command(&self, name: &str) {
+        println!("==> {}", name);
+    }
+
+    fn command_finished(&self, name: &str, duration: std::time::Duration, success: bool) {
+        print!("==> {}: ", name);
+        if success {
+            print!("Success. ");
+        } else {
+            print!("Failed. ");
+        }
+        print!("({})", TimeFormat(duration));
+        println!("");
+    }
 }
 
 impl RunningShellTask {
@@ -96,6 +160,11 @@ impl RunningShellTask {
         echo_stderr: bool,
         redirect_stderr: Option<path::PathBuf>,
     ) -> Self {
+        let progress_reporter: Box<dyn ProgressReporter> = match term::stdout() {
+            None => Box::new(DumbProgressReporter {}),
+            Some(_) => Box::new(TermProgressReporter {}),
+        };
+
         let mut this = RunningShellTask {
             commands,
             environment,
@@ -104,12 +173,11 @@ impl RunningShellTask {
             echo_stderr,
             redirect_stderr,
             running_child: None,
+            progress_reporter,
         };
 
-        {
-            let mut terminal = term::stdout().unwrap();
-            write!(terminal, "\x1b[2J").unwrap(); // Clear the screen.
-        }
+        this.progress_reporter.clear_screen();
+
         this.run_next_command(true);
         this
     }
@@ -123,11 +191,7 @@ impl RunningShellTask {
 
         // TODO(sirver): This should use something like 'conch-parser', this is quite cheap.
         let args = command.command.split_whitespace().collect::<Vec<&str>>();
-        let mut terminal = term::stdout().unwrap();
-        terminal.fg(term::color::CYAN).unwrap();
-        writeln!(terminal, "==> {}", command.name).unwrap();
-        terminal.reset().unwrap();
-        terminal.flush().unwrap();
+        self.progress_reporter.starting_command(&command.name);
 
         let start_time = time::PreciseTime::now();
         let mut child = {
@@ -195,20 +259,8 @@ impl RunningShellTask {
             .to(time::PreciseTime::now())
             .to_std()
             .unwrap();
-        let mut terminal = term::stdout().unwrap();
-        terminal.fg(term::color::CYAN).unwrap();
-        write!(terminal, "==> {}: ", running_child.name).unwrap();
-        terminal.reset().unwrap();
-        if success {
-            terminal.fg(term::color::GREEN).unwrap();
-            write!(terminal, "Success. ").unwrap();
-        } else {
-            terminal.fg(term::color::RED).unwrap();
-            write!(terminal, "Failed. ").unwrap();
-        }
-        terminal.reset().unwrap();
-        write!(terminal, "({})", TimeFormat(duration)).unwrap();
-        writeln!(terminal, "").unwrap();
+        self.progress_reporter
+            .command_finished(&running_child.name, duration, success);
         if success {
             self.run_next_command(false);
         }

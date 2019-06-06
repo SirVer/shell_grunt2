@@ -6,13 +6,10 @@ return {
       redirect_stdout = "/tmp/cargo.out",
       redirect_stderr = "/tmp/cargo.err",
       start_delay = 50,
-      environment = {
-         CARGO_INCREMENTAL = "1",
-      },
       commands = {
          {
             name = "Cargo build (release)",
-            command = "cargo +nightly build --release --color always",
+            command = "cargo build --release --color always",
          },
       },
    },

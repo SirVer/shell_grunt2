@@ -902,7 +902,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "shell_grunt2"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "clap 2.31.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "ctrlc 3.1.0 (registry+https://github.com/rust-lang/crates.io-index)",

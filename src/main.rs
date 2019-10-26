@@ -10,7 +10,7 @@ use shell_grunt2::task::{Runnable, RunningTask, Task};
 use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc;
+use crossbeam_channel::unbounded;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -84,8 +84,8 @@ fn watch_file_events(watcher_file: impl AsRef<Path>) {
         // Ideally, the RecommendedWatcher would be owned by ShellGrunt2, but whenever I try that,
         // the tool crashes whenever it should receive an event on the channel. So it needs to stay
         // outside. :(
-        let (events_tx, events_rx) = mpsc::channel();
-        let mut watcher = notify::watcher(events_tx, Duration::from_millis(50)).unwrap();
+        let (events_tx, events_rx) = unbounded();
+        let mut watcher = notify::RecommendedWatcher::new(events_tx, Duration::from_millis(50)).unwrap();
         watcher
             .watch(&current_dir, notify::RecursiveMode::Recursive)
             .unwrap();

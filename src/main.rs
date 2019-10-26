@@ -16,8 +16,8 @@ use std::thread;
 use std::time::Duration;
 
 fn update() -> Result<(), Box<dyn (::std::error::Error)>> {
-    let target = self_update::get_target()?;
-    self_update::backends::github::Update::configure()?
+    let target = self_update::get_target();
+    self_update::backends::github::Update::configure()
         .repo_owner("SirVer")
         .repo_name("shell_grunt2")
         .target(&target)

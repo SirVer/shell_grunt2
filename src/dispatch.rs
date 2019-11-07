@@ -4,6 +4,7 @@ use time;
 use crate::task::{RunningTask, Task};
 use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
+use std::sync::mpsc;
 
 struct Item<'a> {
     last_run_requested: Option<time::PreciseTime>,
@@ -11,11 +12,9 @@ struct Item<'a> {
     running_task: Option<Box<dyn RunningTask>>,
 }
 
-type EventResult = notify::Result<notify::Event>;
-
 pub struct ShellGrunt2<'a> {
     tasks: &'a [Box<dyn Task>],
-    events_rx: crossbeam_channel::Receiver<EventResult>,
+    events_rx: mpsc::Receiver<notify::DebouncedEvent>,
     // Maps from index into 'tasks' to the current item.
     work_items: HashMap<usize, Item<'a>>,
 }
@@ -23,7 +22,7 @@ pub struct ShellGrunt2<'a> {
 impl<'a> ShellGrunt2<'a> {
     pub fn new(
         tasks: &'a [Box<dyn Task>],
-        events_rx: crossbeam_channel::Receiver<EventResult>,
+        events_rx: mpsc::Receiver<notify::DebouncedEvent>,
     ) -> ShellGrunt2<'a> {
         ShellGrunt2 {
             tasks,
@@ -34,26 +33,20 @@ impl<'a> ShellGrunt2<'a> {
 
     pub fn spin(&mut self) {
         while let Ok(ev) = self.events_rx.try_recv() {
-            let ev = match ev {
-                Ok(ev) => ev,
-                Err(e) => {
-                    println!("Ignored error: {:?}", e);
+            use notify::DebouncedEvent::*;
+
+            let path = match ev {
+                NoticeWrite(path) | NoticeRemove(path) | Create(path) | Write(path)
+                | Remove(path) => path,
+
+                Rename(_, new_path) => new_path,
+
+                Error(err, path) => {
+                    println!("Ignored error: {:?}, ({:?})", err, path);
                     continue;
                 }
+                Rescan | Chmod(_) => continue,
             };
-            use notify::event::ModifyKind;
-            use notify::EventKind;
-            let do_we_care = match ev.kind {
-                EventKind::Modify(_)
-                | EventKind::Modify(ModifyKind::Name(_))
-                | EventKind::Remove(_)
-                | EventKind::Create(_) => true,
-                _ => false,
-            };
-            if !do_we_care {
-                continue;
-            }
-            let path = ev.paths.last().unwrap();
             for (task_idx, task) in self.tasks.iter().enumerate() {
                 if !task.should_run(&path) {
                     continue;

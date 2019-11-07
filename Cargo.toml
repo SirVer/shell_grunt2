@@ -1,7 +1,7 @@
 [package]
 authors = ["Holger Rapp <HolgerRapp@gmx.net>"]
 name = "shell_grunt2"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2018"
 
 [dependencies]

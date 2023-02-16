@@ -16,13 +16,8 @@ sha1 = "0.6.0"
 term = "0.6.1"
 time = "^0.1"
 pathdiff = "0.1.0"
+lua = "0.0.10"
 
 [dependencies.ctrlc]
 features = ["termination"]
 version = "3.0"
-
-[dependencies.lua]
-# Using this because it disables readline, which gave me trouble and fixes
-# compilation on arm.
-git = "https://github.com/SirVer/rust-lua53"
-branch = "00_my_patches"

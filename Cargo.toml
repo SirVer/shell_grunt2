@@ -14,7 +14,7 @@ regex = "1.5.5"
 self_update = "0.7.0"
 sha1 = "0.6.0"
 term = "0.6.1"
-time = "^0.1"
+time = "^0.2"
 pathdiff = "0.1.0"
 lua = "0.0.10"
 
